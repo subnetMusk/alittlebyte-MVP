@@ -1,12 +1,13 @@
 name: CI
 
-# Pipeline composta da quattro job con responsabilità separate:
+# Pipeline composta da cinque job con responsabilità separate:
 #   backend: build immagine app di sviluppo, controlli PHP e coverage globale
 #   frontend: suite SPA, contratto OpenAPI e coverage globale
 #   coverage-diff: coverage del codice modificato rispetto al commit base
 #                  dell'evento (push o pull request)
 #   stack: IaC, osservabilità, build di produzione, scansione Trivy,
 #          smoke HTTPS, accessibilità e pubblicazione GHCR
+#   secrets: scansione gitleaks dell'intera history
 # Ogni job acquisisce le immagini esterne senza pull anonimi: mirror GHCR
 # (autenticato, nessun rate limit per-IP) con fallback upstream; il job stack
 # usa anche la cache di Actions (zero pull a cache hit). Vedi
@@ -244,6 +245,25 @@ jobs:
 
       - name: Audit production Node dependencies
         run: docker compose --profile tools run --rm node npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      # Tutta la history e non solo l'albero corrente: un segreto tolto da un
+      # commit successivo resta leggibile in quelli precedenti. Le eccezioni
+      # stanno in .gitleaks.toml.
+      - name: Scan history with gitleaks
+        run: >
+          docker run --rm -v "$PWD:/repo:ro"
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
 
   coverage-diff:
     name: Coverage diff

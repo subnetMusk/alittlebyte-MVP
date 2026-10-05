@@ -1,0 +1,44 @@
+# Aggiornamenti settimanali delle dipendenze. Le PR non si uniscono da sole:
+# passano dalla CI e da una revisione. Minor e patch sono raggruppate per
+# ecosistema per contenere il numero di PR.
+version: 2
+
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      composer-minor-patch:
+        update-types: [minor, patch]
+
+  # Workspace npm: la radice governa anche apps/frontend.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      angular:
+        patterns: ["@angular/*", "@angular-devkit/*", "angular-eslint"]
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - /docker/php
+      - /docker/nginx
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
