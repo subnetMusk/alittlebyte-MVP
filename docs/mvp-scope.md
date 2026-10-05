@@ -4,16 +4,14 @@ Il progetto copre i flussi principali di Document Intelligence per comunicazioni
 documentale. L'ambiente locale usa LocalStack e Terraform per modellare le dipendenze AWS-like in
 modo ripetibile.
 
-Ogni area distingue quattro livelli:
+Ogni area distingue tre livelli:
 
 - **Incluso**: presente e funzionante nella MVP.
-- **In corso**: assegnato e pianificato, non ancora implementato.
 - **Fuori scope MVP**: deliberatamente escluso dal perimetro concordato con il committente.
 - **Evoluzione futura**: direzione di sviluppo successiva, non richiesta dal perimetro MVP.
 
-Per lo stato implementativo di dettaglio (con evidenze nei path) il riferimento è
-[`IMPLEMENTATION_OVERVIEW.md`](IMPLEMENTATION_OVERVIEW.md); questo documento ne è il complemento
-funzionale e non deve contraddirlo.
+L'architettura che realizza questo perimetro è descritta in
+[`architecture/final-architecture.md`](architecture/final-architecture.md).
 
 > Il perimetro qui descritto recepisce le indicazioni del committente del 15/07/2026: non sono
 > richiesti deploy reale, autenticazione degli utenti né invio effettivo delle comunicazioni;
@@ -78,7 +76,8 @@ Incluso:
 - classificazione e split per destinatario tramite Bedrock sul testo OCR (qualsiasi tipologia di
   documento, sempre almeno un destinatario);
 - estrazione dei campi principali tramite Bedrock sul testo OCR (nome/cognome, azienda, data,
-  tipologia, descrizione);
+  tipologia, descrizione) e, solo se compaiono alla lettera nel testo, di email destinatario,
+  codice fiscale e matricola; il modello non deve dedurli;
 - confidenza calcolata oggettivamente sulla leggibilità OCR (Textract), non come auto-valutazione
   del modello; ogni campo prende la confidenza della riga da cui proviene e il punteggio del
   sotto-documento è quella del campo chiave più debole, con una soglia propria e più alta per il
@@ -109,8 +108,6 @@ Incluso:
 Fuori scope MVP:
 
 - invio dei documenti: la colonna `sub_documents.send_status` e l'identità SES Terraform esistono ma non c'è codice di invio. Il campo resta come **stato di scaricamento** del messaggio precompilato (`Scaricato`/`Non scaricato`, UC-36/UC-39.11): i valori `pending`/`sent` dell'enum non cambiano, cambia solo cosa dichiarano;
-- estrazione AI automatica dell'email destinatario (campo `recipient_email` esposto in sola lettura nel pannello dati estratti, ma non popolato dalla pipeline OCR/Bedrock) e dei campi codice fiscale e matricola dipendente;
-- classificazione manuale iniziale in upload;
 - metriche e dashboard sugli invii.
 
 ## Observability e Sicurezza Operativa
@@ -135,25 +132,22 @@ Incluso:
 
 ### Fuori scope MVP
 
-Le prime tre voci sono state escluse esplicitamente dal committente il 15/07/2026.
+Le tre esclusioni sono state concordate con il committente il 15/07/2026.
 
-- **deploy reale**: lo stack resta quello emulato in locale (Docker, LocalStack, Terraform).
-  I servizi AWS reali in uso restano S3, Textract e Bedrock; non se ne aggiungono altri;
-- **autenticazione degli utenti**: nessun identity provider e nessuna modellazione di utenti
-  effettivi. L'identità è simulata dal middleware `mvp.identity` e non va estesa;
-- **invio effettivo delle comunicazioni** (vedi la sezione Co-Pilot per la ridefinizione di
-  `send_status`);
-- policy RBAC/ABAC complete;
-- integrazione SES per invio effettivo: l'identità SES Terraform esiste come scaffolding
-  documentato, ma non c'è né va aggiunto codice di invio;
-- bus eventi EventBridge per gli eventi terminali della pipeline (bus, rule e target verso SQS
-  esistono in Terraform, ma l'applicativo non pubblica né consuma eventi: nessun `PutEvents`);
-- contract OpenAPI per ogni evento operativo interno (il contratto copre le API applicative, non
-  gli eventi di dominio interni della pipeline).
+- **Deploy reale**: lo stack resta quello emulato in locale (Docker, LocalStack, Terraform). Gli
+  unici servizi AWS reali raggiungibili, e solo su configurazione esplicita, sono S3, Textract e
+  Bedrock.
+- **Autenticazione degli utenti**: nessun identity provider e nessuna modellazione di utenti
+  reali. L'identità è simulata dal middleware `mvp.identity`; i controlli di ruolo e di tenant
+  lato server esistono, ma non sono policy RBAC/ABAC complete.
+- **Invio effettivo delle comunicazioni**: si prepara e si scarica il messaggio, senza spedirlo
+  (vedi la sezione Co-Pilot per il significato di `send_status`). L'identità SES e il bus
+  EventBridge esistono in Terraform come scaffolding, ma l'applicazione non invia email e non
+  pubblica né consuma eventi.
 
 ### Evoluzione futura
 
 - SLO/error budget formalizzati e receiver di notifica reali per Alertmanager (oggi soglie statiche
   e routing demo);
-- backend di osservabilità enterprise e retention dichiarate per metriche/trace/log;
-- propagazione del trace context attraverso SQS/Step Functions.
+- backend di osservabilità gestito e retention dichiarate per metriche, log e dati applicativi;
+- tracing distribuito, con propagazione del contesto attraverso SQS e Step Functions.
