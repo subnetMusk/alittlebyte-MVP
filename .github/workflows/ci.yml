@@ -3,7 +3,8 @@ name: CI
 # Pipeline composta da quattro job con responsabilità separate:
 #   backend: build immagine app di sviluppo, controlli PHP e coverage globale
 #   frontend: suite SPA, contratto OpenAPI e coverage globale
-#   coverage-diff: coverage del codice modificato rispetto a origin/develop
+#   coverage-diff: coverage del codice modificato rispetto al commit base
+#                  dell'evento (push o pull request)
 #   stack: IaC, osservabilità, build di produzione, scansione Trivy,
 #          smoke HTTPS, accessibilità e pubblicazione GHCR
 # Ogni job acquisisce le immagini esterne senza pull anonimi: mirror GHCR
@@ -268,27 +269,69 @@ jobs:
       - name: Install diff-cover
         run: python -m pip install diff-cover==10.4.1
 
+      # La base e' il commit da cui parte l'evento, non un ref di branch: su un
+      # push il ref del branch punta gia' al commit corrente e il diff sarebbe
+      # vuoto. Pull request: base della PR. Push: commit precedente al push.
+      # Senza una base utilizzabile (creazione di un branch o di un tag,
+      # workflow_dispatch, commit non piu' raggiungibile) si ripiega sul
+      # merge-base con il default branch, segnalandolo nel log.
+      - name: Resolve diff base
+        id: diff-base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) candidate="$PR_BASE_SHA"; origin="github.event.pull_request.base.sha" ;;
+            push) candidate="$PUSH_BEFORE_SHA"; origin="github.event.before" ;;
+            *) candidate=""; origin="nessuna base per l'evento ${EVENT_NAME}" ;;
+          esac
+
+          # Uno SHA di soli zeri indica la creazione del ref: non c'e' un commit precedente.
+          if [ -n "${candidate//0/}" ] && git cat-file -e "${candidate}^{commit}" 2>/dev/null; then
+            base="$candidate"
+          else
+            base="$(git merge-base "origin/${DEFAULT_BRANCH}" HEAD)"
+            echo "::warning::Base dell'evento non utilizzabile (${origin}: '${candidate}'): il diff coverage usa il merge-base con origin/${DEFAULT_BRANCH}."
+            origin="merge-base con origin/${DEFAULT_BRANCH}"
+          fi
+
+          echo "Base: ${base} (${origin})"
+          echo "Head: $(git rev-parse HEAD)"
+          echo "sha=${base}" >> "$GITHUB_OUTPUT"
+
       # diff-cover non accetta XML e LCov nella stessa invocazione, quindi i due
       # stack vengono misurati separatamente. Ogni report descrive solo i propri
       # file: le righe modificate dell'altro stack non risultano misurate e
       # restano fuori dal conteggio, senza sovrapposizioni ne' doppi conteggi.
       # Un commit che tocca un solo stack lascia l'altra invocazione a zero righe
-      # misurate, che per diff-cover e' un esito positivo.
+      # misurate: per diff-cover e' un esito positivo, e il log lo dichiara.
       - name: Check changed-line coverage
+        env:
+          BASE_SHA: ${{ steps.diff-base.outputs.sha }}
         run: |
           minimum="$(jq -er '.diff.lines' coverage-thresholds.json)"
           status=0
 
           check() {
             local report="$1" stack="$2"
+            local summary="coverage/diff-coverage-${stack}.json"
 
             echo "::group::Coverage del codice modificato: ${stack} (minimo ${minimum}%)"
             diff-cover "$report" \
-              --compare-branch=origin/develop \
-              --format="html:coverage/diff-coverage-${stack}.html,markdown:coverage/diff-coverage-${stack}.md" \
+              --compare-branch="$BASE_SHA" \
+              --format="html:coverage/diff-coverage-${stack}.html,markdown:coverage/diff-coverage-${stack}.md,json:${summary}" \
               --show-uncovered \
               --fail-under="$minimum" || status=1
             echo "::endgroup::"
+
+            measured="$(jq -r '.total_num_lines' "$summary")"
+            echo "${stack}: base ${BASE_SHA}, head $(git rev-parse HEAD), righe modificate ${measured} misurate su $(jq -r '.num_changed_lines' "$summary"), non coperte $(jq -r '.total_num_violations' "$summary")"
+            if [ "$measured" = "0" ]; then
+              echo "::notice::Coverage diff ${stack}: nessuna riga modificata misurata rispetto a ${BASE_SHA}."
+            fi
           }
 
           check coverage/backend/cobertura.xml backend
@@ -304,8 +347,10 @@ jobs:
           path: |
             coverage/diff-coverage-backend.html
             coverage/diff-coverage-backend.md
+            coverage/diff-coverage-backend.json
             coverage/diff-coverage-frontend.html
             coverage/diff-coverage-frontend.md
+            coverage/diff-coverage-frontend.json
           if-no-files-found: warn
           retention-days: 7
 

@@ -95,7 +95,7 @@ Questa impostazione rende visibili latency, traffico, errori, saturazione, stato
 
 La pipeline CI verifica la qualità della repository attraverso controlli backend, frontend, infrastrutturali e di sicurezza.
 
-Il backend viene controllato con formattazione, analisi statica, test automatici e coverage globale. Il frontend viene verificato tramite typecheck, test, coverage globale, build e generazione del client API. Un job dedicato richiede almeno l'80% di coverage sulle linee nuove o modificate rispetto a `origin/develop`, misurato separatamente per backend e frontend. Lo stack locale viene validato attraverso Terraform, configurazioni di osservabilità, build delle immagini, scansione Trivy, smoke test e audit di accessibilità con axe e pa11y.
+Il backend viene controllato con formattazione, analisi statica, test automatici e coverage globale. Il frontend viene verificato tramite typecheck, test, coverage globale, build e generazione del client API. Un job dedicato richiede almeno l'80% di coverage sulle linee nuove o modificate rispetto al commit base del push o della pull request, misurato separatamente per backend e frontend. Lo stack locale viene validato attraverso Terraform, configurazioni di osservabilità, build delle immagini, scansione Trivy, smoke test e audit di accessibilità con axe e pa11y.
 
 La CI agisce come quality gate del progetto: ogni modifica significativa deve mantenere coerenti codice applicativo, contratto API, infrastruttura locale e comportamento osservabile dello stack. I minimi globali e quello sul codice modificato sono definiti in `coverage-thresholds.json` e non prevedono tolleranze.
 

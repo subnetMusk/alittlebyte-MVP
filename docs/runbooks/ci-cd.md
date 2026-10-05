@@ -14,7 +14,7 @@ The pipeline has four jobs through Docker Compose:
 
 - **backend**: builds the app image and runs the PHP checks: Composer manifest validation, Pint (format), Larastan/PHPStan (static analysis), Pest and Xdebug line/branch coverage, and finally `composer audit` on the production dependencies. Xdebug is installed only when `COMPOSER_INSTALL_DEV=true`, so it is absent from the production image. The audit runs last, like its npm counterpart in the frontend job, so an advisory never hides the test outcome.
 - **frontend**: runs the Angular SPA suite on the Node tool image: OpenAPI contract lint, generated client drift check, ESLint, typecheck, Jest tests with statement/function/branch coverage, production build, and a production-only `npm audit` at HIGH. The typecheck covers the test suites as well as the app (`tsconfig.spec-typecheck.json`): Jest transpiles specs without checking types, so without this step a test could reference fields that do not exist on the generated API model and still pass.
-- **coverage-diff**: downloads the Cobertura and LCOV artifacts from the two test jobs and applies the changed-line gate against `origin/develop` with `diff-cover==10.4.1`. The two stacks are measured in separate invocations, because `diff-cover` refuses XML and LCov reports in the same run; each report only describes its own files, so the two measurements never overlap and no line is counted twice.
+- **coverage-diff**: downloads the Cobertura and LCOV artifacts from the two test jobs and applies the changed-line gate with `diff-cover==10.4.1` against the base commit of the triggering event: `github.event.pull_request.base.sha` on pull requests, `github.event.before` on pushes. When the event has no usable base (branch or tag creation, `workflow_dispatch`, a commit no longer reachable) the job falls back to the merge-base with the default branch and emits a warning. A branch ref is never used as the base: on a push it already points to the pushed commit and the diff would be empty. The two stacks are measured in separate invocations, because `diff-cover` refuses XML and LCov reports in the same run; each report only describes its own files, so the two measurements never overlap and no line is counted twice.
 - **stack** (static infrastructure/observability checks (Terraform `fmt`/`init`/`validate`, OTel Collector and Prometheus config), production image build, Trivy scan (`vuln,secret,config` at HIGH/CRITICAL), LocalStack Terraform apply, Angular SPA build and upload to the LocalStack S3 bucket, HTTPS smoke of the served stack (SPA served via the local CDN emulator) a separate Nginx: with deep-link fallback, `/api`/`/health`/`/ready`, blocked surfaces, observability dashboards behind basic auth), accessibility (axe/Pa11y plus an enforced-CSP smoke), and conditional publish of the two custom images (`mvp-app`, `mvp-nginx`) to GHCR.
 
 Supporting workflows:
@@ -86,12 +86,12 @@ PHPUnit writes the Cobertura report with the container paths: `<source>` holds t
 
 ```bash
 diff-cover coverage/backend/cobertura.xml \
-  --compare-branch=origin/develop --fail-under=80
+  --compare-branch="$BASE_SHA" --fail-under=80
 diff-cover coverage/frontend/lcov.info \
-  --compare-branch=origin/develop --fail-under=80
+  --compare-branch="$BASE_SHA" --fail-under=80
 ```
 
-Both invocations always run and their exit codes are combined, so a failure on one stack still produces the other's report. A commit that touches a single stack leaves the other invocation with no measured line, which `diff-cover` treats as a pass. The job publishes HTML and Markdown reports per stack. Coverage data artifacts are retained for 1 day, HTML and Markdown reports for 7. If a stack smoke or accessibility step fails, the `stack-diagnostics` artifact contains `docker compose ps`, timestamped Compose logs and Docker disk usage. The stack is still stopped by the following `if: always()` cleanup step.
+Both invocations always run and their exit codes are combined, so a failure on one stack still produces the other's report. A commit that touches a single stack leaves the other invocation with no measured line, which `diff-cover` treats as a pass; the log reports base, head and measured lines for each stack and adds a notice when no line was measured. The job publishes HTML, Markdown and JSON reports per stack. Coverage data artifacts are retained for 1 day, HTML and Markdown reports for 7. If a stack smoke or accessibility step fails, the `stack-diagnostics` artifact contains `docker compose ps`, timestamped Compose logs and Docker disk usage. The stack is still stopped by the following `if: always()` cleanup step.
 
 ## AWS Smoke
 
