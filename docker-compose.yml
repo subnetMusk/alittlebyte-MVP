@@ -18,6 +18,17 @@ x-backend-environment: &backend-environment
   OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-local}
   MVP_RELEASE_VERSION: ${MVP_RELEASE_VERSION:-local}
   MVP_METRICS_ENABLED: ${MVP_METRICS_ENABLED:-true}
+  # Profilo di esecuzione (ADR 0014): standard usa Bedrock e Textract, local
+  # Ollama, l'OCR locale e una copertina locale. Le variabili LOCAL_* e
+  # COMFYUI_* contano solo nel profilo local.
+  MVP_EXECUTION_PROFILE: ${MVP_EXECUTION_PROFILE:-standard}
+  LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434}
+  LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3.5:9b}
+  LOCAL_LLM_TIMEOUT_SECONDS: ${LOCAL_LLM_TIMEOUT_SECONDS:-300}
+  LOCAL_COVER_PROVIDER: ${LOCAL_COVER_PROVIDER:-mock}
+  COMFYUI_BASE_URL: ${COMFYUI_BASE_URL:-http://host.docker.internal:8188}
+  COMFYUI_CHECKPOINT: ${COMFYUI_CHECKPOINT:-}
+  COMFYUI_WORKFLOW: ${COMFYUI_WORKFLOW:-}
 
 services:
   traefik:
@@ -237,6 +248,10 @@ services:
       # Shared with the queue worker so domain metrics recorded by the consumer
       # (Textract, SQS, workflow completion) reach the /internal/metrics exporter.
       - observability-metrics:/var/www/html/storage/app/private/observability
+    # Ollama e ComfyUI girano sull'host nel profilo local: su Linux il nome
+    # host.docker.internal va mappato esplicitamente sul gateway.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels: *collected-logs
     networks:
       - backend
@@ -262,6 +277,10 @@ services:
         condition: service_healthy
     volumes:
       - observability-metrics:/var/www/html/storage/app/private/observability
+    # Ollama e ComfyUI girano sull'host nel profilo local: su Linux il nome
+    # host.docker.internal va mappato esplicitamente sul gateway.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels: *collected-logs
     networks:
       - backend
@@ -291,6 +310,10 @@ services:
       # Stesso volume del worker documentale: le metriche di dominio scritte qui
       # devono raggiungere l'exporter /internal/metrics servito da app.
       - observability-metrics:/var/www/html/storage/app/private/observability
+    # Ollama e ComfyUI girano sull'host nel profilo local: su Linux il nome
+    # host.docker.internal va mappato esplicitamente sul gateway.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels: *collected-logs
     networks:
       - backend

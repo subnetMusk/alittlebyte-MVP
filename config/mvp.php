@@ -22,6 +22,10 @@ return [
         ],
     ],
 
+    // Profilo di esecuzione (ADR 0014): standard usa i provider AWS dell'MVP,
+    // local i provider locali. Lo legge solo il composition root.
+    'execution_profile' => env('MVP_EXECUTION_PROFILE', 'standard'),
+
     'authorization' => [
         'roles' => ['mvp-operator', 'mvp-admin'],
     ],

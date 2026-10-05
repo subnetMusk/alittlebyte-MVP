@@ -6,7 +6,12 @@ use App\Models\Communication;
 use App\Models\OriginalDocument;
 use App\Mvp\Ai\AiOutputValidator;
 use App\Mvp\Ai\BedrockService;
+use App\Mvp\Ai\Cover\ComfyUiCoverGenerator;
+use App\Mvp\Ai\Cover\CoverImageGenerator;
+use App\Mvp\Ai\Cover\DeterministicCoverGenerator;
+use App\Mvp\Ai\OllamaService;
 use App\Mvp\Communications\Adapters\Outbound\Ai\BedrockCommunicationAiAdapter;
+use App\Mvp\Communications\Adapters\Outbound\Ai\LocalCommunicationAiAdapter;
 use App\Mvp\Communications\Adapters\Outbound\Events\LaravelCommunicationEventDispatcher;
 use App\Mvp\Communications\Adapters\Outbound\Pdf\DompdfCommunicationPdfRenderer;
 use App\Mvp\Communications\Adapters\Outbound\Persistence\EloquentCommunicationRepository;
@@ -90,7 +95,9 @@ use App\Mvp\Communications\Domain\Ports\Outbound\CommunicationPdfRendererPort;
 use App\Mvp\Communications\Domain\Ports\Outbound\CommunicationRepository;
 use App\Mvp\Communications\Domain\Ports\Outbound\PromptConfigurationRepository;
 use App\Mvp\Documents\Adapters\Outbound\Ai\BedrockDocumentAiAdapter;
+use App\Mvp\Documents\Adapters\Outbound\Ai\OllamaDocumentAiAdapter;
 use App\Mvp\Documents\Adapters\Outbound\Events\LaravelDocumentEventDispatcher;
+use App\Mvp\Documents\Adapters\Outbound\Ocr\LocalPdfOcrAdapter;
 use App\Mvp\Documents\Adapters\Outbound\Ocr\TextractOcrAdapter;
 use App\Mvp\Documents\Adapters\Outbound\Pdf\DompdfSendMessageRenderer;
 use App\Mvp\Documents\Adapters\Outbound\Persistence\EloquentDocumentRepository;
@@ -159,8 +166,10 @@ use App\Mvp\Identity\MvpUserProvider;
 use App\Mvp\Observability\DlqDepthProbe;
 use App\Mvp\Observability\MetricsRecorder;
 use App\Mvp\Support\Clock\SystemClock;
+use App\Mvp\Support\ExecutionProfile;
 use App\Mvp\Support\Identifiers\RandomUuidGenerator;
 use App\Mvp\Support\Identifiers\UniqueIdGeneratorPort;
+use App\Mvp\Support\LocalCoverProvider;
 use App\Mvp\Support\Persistence\LaravelTransactionManager;
 use App\Mvp\Support\Persistence\TransactionManagerPort;
 use App\Mvp\Workflow\Adapters\Outbound\SfnWorkflowEngineAdapter;
@@ -174,6 +183,8 @@ use Aws\Sfn\SfnClient;
 use Aws\Sqs\SqsClient;
 use Aws\Textract\TextractClient;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Process\Factory as ProcessFactory;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -204,6 +215,32 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(AiOutputValidator::class),
                 $app->make(WorkflowTaskHeartbeat::class),
             );
+        });
+
+        // Profilo di esecuzione locale (ADR 0014): controparte di BedrockService
+        // per il modello testuale servito da Ollama.
+        $this->app->singleton(OllamaService::class, function ($app) {
+            return new OllamaService(
+                $app->make(HttpFactory::class),
+                $app->make(AiOutputValidator::class),
+                (string) config('services.local_llm.base_url'),
+                (string) config('services.local_llm.model'),
+                (int) config('services.local_llm.timeout_seconds', 300),
+            );
+        });
+
+        $this->app->singleton(CoverImageGenerator::class, function ($app) {
+            return match (LocalCoverProvider::fromConfig(config('services.local_cover.provider'))) {
+                LocalCoverProvider::Mock => new DeterministicCoverGenerator,
+                LocalCoverProvider::ComfyUi => new ComfyUiCoverGenerator(
+                    $app->make(HttpFactory::class),
+                    $app->make(WorkflowTaskHeartbeat::class),
+                    (string) config('services.local_cover.comfyui.base_url'),
+                    (string) config('services.local_cover.comfyui.workflow'),
+                    (string) config('services.local_cover.comfyui.checkpoint'),
+                    (int) config('services.local_cover.comfyui.timeout_seconds', 240),
+                ),
+            };
         });
 
         $this->app->singleton(SfnClient::class, function () {
@@ -296,8 +333,32 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TransactionManagerPort::class, LaravelTransactionManager::class);
 
         // --- Dominio Documents: porta -> adapter (vedi ADR 0010) ---
-        $this->app->singleton(OcrGatewayPort::class, TextractOcrAdapter::class);
-        $this->app->singleton(DocumentAiGatewayPort::class, BedrockDocumentAiAdapter::class);
+        // Il profilo di esecuzione sceglie gli adapter AI e OCR (ADR 0014):
+        // questo provider e' l'unico punto del codice che lo legge.
+        $this->app->singleton(OcrGatewayPort::class, fn ($app) => match ($this->executionProfile()) {
+            ExecutionProfile::Standard => $app->make(TextractOcrAdapter::class),
+            ExecutionProfile::Local => $app->make(LocalPdfOcrAdapter::class),
+        });
+        $this->app->singleton(DocumentAiGatewayPort::class, fn ($app) => match ($this->executionProfile()) {
+            ExecutionProfile::Standard => $app->make(BedrockDocumentAiAdapter::class),
+            ExecutionProfile::Local => $app->make(OllamaDocumentAiAdapter::class),
+        });
+        // Stesso disco e stessa radice da cui StartDocumentWorkflowService
+        // ricava le coordinate S3 passate all'OCR.
+        $this->app->singleton(LocalPdfOcrAdapter::class, function ($app) {
+            $disk = (string) config('mvp.documents.storage_disk', config('filesystems.default'));
+
+            return new LocalPdfOcrAdapter(
+                $app->make(DocumentStoragePort::class),
+                $app->make(ProcessFactory::class),
+                $app->make(MetricsRecorder::class),
+                $app->make(WorkflowTaskHeartbeat::class),
+                (string) config("filesystems.disks.{$disk}.bucket", ''),
+                trim((string) config("filesystems.disks.{$disk}.root", ''), '/'),
+                (string) config('services.local_ocr.languages', 'ita+eng'),
+                (int) config('services.local_ocr.timeout_seconds', 120),
+            );
+        });
         $this->app->singleton(DocumentStoragePort::class, FlysystemDocumentStorageAdapter::class);
         $this->app->singleton(DocumentRepository::class, EloquentDocumentRepository::class);
         $this->app->singleton(SendMessageRendererPort::class, DompdfSendMessageRenderer::class);
@@ -378,7 +439,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PollDocumentProgressUseCase::class, PollDocumentProgressService::class);
 
         // --- Dominio Communications: porta -> adapter (vedi ADR 0010) ---
-        $this->app->singleton(CommunicationAiGatewayPort::class, BedrockCommunicationAiAdapter::class);
+        $this->app->singleton(CommunicationAiGatewayPort::class, fn ($app) => match ($this->executionProfile()) {
+            ExecutionProfile::Standard => $app->make(BedrockCommunicationAiAdapter::class),
+            ExecutionProfile::Local => $app->make(LocalCommunicationAiAdapter::class),
+        });
         $this->app->singleton(CommunicationPdfRendererPort::class, DompdfCommunicationPdfRenderer::class);
         $this->app->singleton(CommunicationCoverStoragePort::class, FlysystemCommunicationCoverAdapter::class);
         $this->app->singleton(CommunicationRepository::class, EloquentCommunicationRepository::class);
@@ -456,6 +520,14 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 
+    /**
+     * @throws \InvalidArgumentException su un profilo non previsto.
+     */
+    private function executionProfile(): ExecutionProfile
+    {
+        return ExecutionProfile::fromConfig(config('mvp.execution_profile'));
+    }
+
     private function bedrockClient(string $region): BedrockRuntimeClient
     {
         $config = [
@@ -482,6 +554,13 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Configurazione del profilo verificata all'avvio: un valore errato
+        // ferma l'applicazione con un messaggio chiaro invece di emergere al
+        // primo task di workflow.
+        if ($this->executionProfile() === ExecutionProfile::Local) {
+            LocalCoverProvider::fromConfig(config('services.local_cover.provider'));
+        }
+
         // Provider esplicito per il guard 'mvp' (vedi config/auth.php):
         // MvpUser non e' un model Eloquent, quindi il driver 'eloquent'
         // di default fallirebbe silenziosamente male se mai risolto

@@ -79,6 +79,32 @@ return [
         'endpoint' => env('SQS_ENDPOINT'),
     ],
 
+    // Provider del profilo di esecuzione locale (ADR 0014). Gli endpoint di
+    // default sono quelli dell'host visto da Docker; nessuno e' usato nel
+    // profilo standard.
+    'local_llm' => [
+        'base_url' => env('LOCAL_LLM_BASE_URL', 'http://host.docker.internal:11434'),
+        'model' => env('LOCAL_LLM_MODEL', 'qwen3.5:9b'),
+        // Il primo caricamento del modello in memoria puo' superare il minuto.
+        'timeout_seconds' => (int) env('LOCAL_LLM_TIMEOUT_SECONDS', 300),
+    ],
+
+    'local_ocr' => [
+        'languages' => 'ita+eng',
+        'timeout_seconds' => 120,
+    ],
+
+    'local_cover' => [
+        'provider' => env('LOCAL_COVER_PROVIDER', 'mock'),
+        'comfyui' => [
+            'base_url' => env('COMFYUI_BASE_URL', 'http://host.docker.internal:8188'),
+            'checkpoint' => env('COMFYUI_CHECKPOINT', ''),
+            'workflow' => env('COMFYUI_WORKFLOW') ?: resource_path('ai/comfyui/cover-workflow.json'),
+            // Sotto il timeout del task GenerateCover dell'ASL (300 s).
+            'timeout_seconds' => 240,
+        ],
+    ],
+
     'textract' => [
         'enabled' => (bool) env('TEXTRACT_ENABLED', false),
         'region' => env('TEXTRACT_REGION', env('TEXTRACT_AWS_REGION', env('AWS_REAL_REGION', env('AWS_DEFAULT_REGION', 'eu-central-1')))),
