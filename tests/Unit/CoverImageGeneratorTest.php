@@ -174,8 +174,8 @@ test('ComfyUI failures degrade the cover with an explicit reason, without fallin
     'non raggiungibile' => [fn () => Http::fake(fn () => throw new ConnectionException('Connection refused')), 'model_error', 5],
     'workflow rifiutato' => [fn () => Http::fake(['*' => Http::response(['error' => ['type' => 'prompt_outputs_failed_validation'], 'node_errors' => []], 400)]), 'invalid_response', 5],
     'prompt_id assente' => [fn () => Http::fake(['*' => Http::response(['node_errors' => []])]), 'invalid_response', 5],
-    'errore HTTP sulla cronologia' => [fn () => Http::fake(['*/prompt' => Http::response(['prompt_id' => 'p-1']), '*/history/*' => Http::response('Internal Server Error', 500)]), 'invalid_response', 5],
-    'nessuna immagine entro il timeout' => [fn () => Http::fake(['*/prompt' => Http::response(['prompt_id' => 'p-1']), '*/history/*' => Http::response([])]), 'model_error', 1],
+    'errore HTTP sulla cronologia' => [fn () => Http::fake(['*/prompt' => Http::response(['prompt_id' => 'p-1']), '*/history/*' => Http::response('Internal Server Error', 500), '*' => Http::response()]), 'invalid_response', 5],
+    'nessuna immagine entro il timeout' => [fn () => Http::fake(['*/prompt' => Http::response(['prompt_id' => 'p-1']), '*/history/*' => Http::response([]), '*' => Http::response()]), 'model_error', 1],
     'risposta non immagine' => [fn () => fakeComfyUi('<html>', 'text/html'), 'no_payload', 5],
 ]);
 
@@ -190,8 +190,10 @@ test('a failed or imageless execution stops the polling at once', function (arra
     expect($image['bytes'])->toBeNull()
         ->and($image['reason'])->toBe($reason);
 
-    // Una sola lettura della cronologia: nessuna attesa fino al timeout.
+    // Una sola lettura della cronologia: nessuna attesa fino al timeout, e
+    // nulla da annullare in ComfyUI.
     Http::assertSentCount(2);
+    Http::assertNotSent(fn (Request $request) => str_ends_with($request->url(), '/interrupt'));
 })->with([
     'esecuzione fallita' => [[
         'status_str' => 'error',
@@ -200,6 +202,50 @@ test('a failed or imageless execution stops the polling at once', function (arra
     ], 'model_error'],
     'completata senza immagine' => [['status_str' => 'success', 'completed' => true, 'messages' => []], 'no_payload'],
 ]);
+
+test('a slow answer from a busy ComfyUI does not stop the wait', function () {
+    $historyCalls = 0;
+    Http::fake(function (Request $request) use (&$historyCalls) {
+        if (str_ends_with($request->url(), '/prompt')) {
+            return Http::response(['prompt_id' => 'p-1']);
+        }
+
+        if (str_contains($request->url(), '/history/')) {
+            // ComfyUI puo' non rispondere mentre carica i modelli.
+            if (++$historyCalls === 1) {
+                throw new ConnectionException('cURL error 28: Operation timed out');
+            }
+
+            return Http::response(comfyUiImageEntry());
+        }
+
+        return Http::response("\x89PNG-fake", 200, ['Content-Type' => 'image/png']);
+    });
+
+    $image = makeComfyUiGenerator()->generate('Ferie', 'Tecnico', 'Aggiornamento breve', null);
+
+    expect($image['reason'])->toBeNull()
+        ->and($image['bytes'])->toBe("\x89PNG-fake")
+        ->and($historyCalls)->toBe(2);
+});
+
+test('a generation that outlives the timeout is removed from ComfyUI', function () {
+    Http::fake([
+        '*/prompt' => Http::response(['prompt_id' => 'p-1']),
+        // Nessuna risposta utile fino alla scadenza.
+        '*/history/*' => fn () => throw new ConnectionException('cURL error 28: Operation timed out'),
+        '*/queue' => Http::response(),
+        '*/interrupt' => Http::response(),
+    ]);
+
+    $image = makeComfyUiGenerator(timeoutSeconds: 1)->generate('Ferie', 'Tecnico', 'Aggiornamento breve', null);
+
+    expect($image['reason'])->toBe('model_error')
+        ->and($image['warning'])->toContain('entro 1 secondi');
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/queue') && $request['delete'] === ['p-1']);
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/interrupt') && $request['prompt_id'] === 'p-1');
+});
 
 test('an unusable workflow or base url is reported as not configured and sends nothing', function (Closure $generator) {
     Http::fake();

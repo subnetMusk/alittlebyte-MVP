@@ -89,9 +89,19 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
                 return $this->failure('Copertina non disponibile: ComfyUI non ha accettato il workflow.', 'invalid_response');
             }
 
-            $outcome = $this->waitForImage($promptId, $deadline);
+            try {
+                $outcome = $this->waitForImage($promptId, $deadline);
+            } catch (RequestException $e) {
+                $this->cancel($promptId);
+
+                throw $e;
+            }
 
             if (isset($outcome['failure'])) {
+                if ($outcome['pending']) {
+                    $this->cancel($promptId);
+                }
+
                 return $this->failure(...$outcome['failure']);
             }
 
@@ -122,14 +132,31 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
      * workflow intanto. ComfyUI aggiunge il prompt alla cronologia solo a
      * esecuzione conclusa, con o senza errore.
      *
-     * @return array{image: array{filename: string, subfolder: string, type: string}}|array{failure: array{0: string, 1: string}}
+     * Mentre carica i modelli ComfyUI puo' non rispondere per decine di
+     * secondi: una lettura senza risposta non chiude l'attesa, che continua
+     * fino alla scadenza.
+     *
+     * @return array{image: array{filename: string, subfolder: string, type: string}}|array{failure: array{0: string, 1: string}, pending: bool}
      */
     private function waitForImage(string $promptId, float $deadline): array
     {
+        $slowResponseLogged = false;
+
         while (microtime(true) < $deadline) {
             $this->heartbeat->beat();
 
-            $entry = $this->client($deadline)->get("/history/{$promptId}")->throw()->json($promptId);
+            try {
+                $entry = $this->client($deadline)->get("/history/{$promptId}")->throw()->json($promptId);
+            } catch (ConnectionException $e) {
+                if (! $slowResponseLogged) {
+                    Log::info('ComfyUI slow to answer while generating', ['prompt_id' => $promptId, 'message' => $e->getMessage()]);
+                    $slowResponseLogged = true;
+                }
+
+                $this->pause($deadline);
+
+                continue;
+            }
 
             if (is_array($entry)) {
                 $image = $this->firstImage((array) ($entry['outputs'] ?? []));
@@ -143,23 +170,46 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
                 if (($status['status_str'] ?? null) === 'error') {
                     Log::warning('ComfyUI execution failed', ['prompt_id' => $promptId, 'detail' => $this->executionError($status)]);
 
-                    return ['failure' => ['Copertina non disponibile: ComfyUI ha interrotto la generazione.', 'model_error']];
+                    return ['failure' => ['Copertina non disponibile: ComfyUI ha interrotto la generazione.', 'model_error'], 'pending' => false];
                 }
 
                 if (($status['completed'] ?? false) === true) {
                     Log::warning('ComfyUI completed without an image', ['prompt_id' => $promptId]);
 
-                    return ['failure' => ['Copertina non disponibile: ComfyUI non ha restituito un\'immagine.', 'no_payload']];
+                    return ['failure' => ['Copertina non disponibile: ComfyUI non ha restituito un\'immagine.', 'no_payload'], 'pending' => false];
                 }
             }
 
-            $remainingMicroseconds = (int) (($deadline - microtime(true)) * 1_000_000);
-            usleep(max(0, min($this->pollIntervalMilliseconds * 1000, $remainingMicroseconds)));
+            $this->pause($deadline);
         }
 
         Log::warning('ComfyUI generation timed out', ['prompt_id' => $promptId, 'timeout_seconds' => $this->timeoutSeconds]);
 
-        return ['failure' => ["Copertina non disponibile: ComfyUI non ha completato la generazione entro {$this->timeoutSeconds} secondi.", 'model_error']];
+        return ['failure' => ["Copertina non disponibile: ComfyUI non ha completato la generazione entro {$this->timeoutSeconds} secondi.", 'model_error'], 'pending' => true];
+    }
+
+    private function pause(float $deadline): void
+    {
+        $remainingMicroseconds = (int) (($deadline - microtime(true)) * 1_000_000);
+        usleep(max(0, min($this->pollIntervalMilliseconds * 1000, $remainingMicroseconds)));
+    }
+
+    /**
+     * Toglie dalla coda, o interrompe se gia' in esecuzione, il prompt rimasto
+     * senza esito: altrimenti ComfyUI continuerebbe a generare un'immagine che
+     * nessuno usera', occupando GPU e memoria. L'interruzione e' mirata al
+     * solo prompt della copertina. Le due chiamate hanno un limite breve, per
+     * restare entro il timeout del task; un loro errore non cambia l'esito.
+     */
+    private function cancel(string $promptId): void
+    {
+        try {
+            $this->http->baseUrl($this->baseUrl)->timeout(5)->acceptJson()->post('/queue', ['delete' => [$promptId]])->throw();
+            $this->http->baseUrl($this->baseUrl)->timeout(5)->acceptJson()->post('/interrupt', ['prompt_id' => $promptId])->throw();
+            Log::info('ComfyUI prompt cancelled', ['prompt_id' => $promptId]);
+        } catch (\Throwable $e) {
+            Log::warning('ComfyUI prompt cancellation failed', ['prompt_id' => $promptId, 'message' => $e->getMessage()]);
+        }
     }
 
     /**
