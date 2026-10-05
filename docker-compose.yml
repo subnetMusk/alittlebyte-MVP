@@ -10,7 +10,6 @@ x-backend-environment: &backend-environment
   OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-alittlebyte}
   OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-mvp-document-pipeline}
   OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-local}
-  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
   MVP_RELEASE_VERSION: ${MVP_RELEASE_VERSION:-local}
   MVP_METRICS_ENABLED: ${MVP_METRICS_ENABLED:-true}
 
@@ -50,8 +49,8 @@ services:
         condition: service_healthy
       traefik:
         condition: service_started
-    # backend: riceve OTLP da app/queue e scrappa nginx; observability: esporta
-    # verso tempo/loki e scrappa traefik:9100
+    # backend: scrape di nginx:8081; observability: scrape di traefik:9100 ed
+    # esposizione delle metriche a Prometheus su :9464
     networks:
       - backend
       - observability
@@ -73,18 +72,6 @@ services:
         condition: service_started
       alertmanager:
         condition: service_started
-    networks:
-      - observability
-
-  tempo:
-    image: grafana/tempo:2.9.0
-    # Nessuna porta esposta sull'host: UI/API via https://tempo.localhost:8443
-    # (basic auth); Grafana e otel-collector vi accedono dalla rete interna.
-    command:
-      - -config.file=/etc/tempo/tempo.yml
-    volumes:
-      - ./docker/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
-      - tempo-data:/var/tempo
     networks:
       - observability
 
@@ -117,8 +104,6 @@ services:
       - grafana-data:/var/lib/grafana
     depends_on:
       prometheus:
-        condition: service_started
-      tempo:
         condition: service_started
       loki:
         condition: service_started
@@ -473,7 +458,7 @@ services:
 # Segmentazione di rete (least privilege):
 # - edge: traffico HTTP in ingresso (traefik <-> nginx) e tool di audit frontend
 # - backend: app, worker, datastore e AWS locale — non raggiungibile da grafana & co.
-# - observability: telemetria (otel, prometheus, tempo, loki, alloy, grafana);
+# - observability: telemetria (otel, prometheus, alertmanager, loki, alloy, grafana);
 #   traefik vi partecipa solo per instradare le dashboard e per lo scrape :9100
 networks:
   edge:
@@ -491,7 +476,6 @@ volumes:
   redis-data:
   localstack-data:
   prometheus-data:
-  tempo-data:
   alertmanager-data:
   grafana-data:
   terraform-plugin-cache:

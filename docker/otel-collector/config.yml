@@ -1,11 +1,7 @@
+# Il Collector fa da gateway delle metriche: raschia l'exporter applicativo,
+# Traefik e se stesso, e le espone a Prometheus su :9464. Non riceve OTLP:
+# nell'applicazione non c'e' un SDK OpenTelemetry che produca trace o log.
 receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-
   prometheus:
     config:
       scrape_configs:
@@ -60,16 +56,6 @@ exporters:
     add_metric_suffixes: false
     resource_to_telemetry_conversion:
       enabled: false
-  otlp/tempo:
-    endpoint: tempo:4317
-    tls:
-      insecure: true
-  # Loki 3.x espone ingestion OTLP nativa: i log applicativi inviati via OTLP
-  # finiscono in Loki accanto a quelli raccolti da Alloy (docker logs).
-  otlphttp/loki:
-    endpoint: http://loki:3100/otlp
-  debug:
-    verbosity: basic
 
 extensions:
   health_check:
@@ -92,26 +78,8 @@ service:
     metrics:
       receivers:
         - prometheus
-        - otlp
       processors:
         - memory_limiter
         - batch
       exporters:
         - prometheus
-    traces:
-      receivers:
-        - otlp
-      processors:
-        - memory_limiter
-        - batch
-      exporters:
-        - otlp/tempo
-        - debug
-    logs:
-      receivers:
-        - otlp
-      processors:
-        - memory_limiter
-        - batch
-      exporters:
-        - otlphttp/loki

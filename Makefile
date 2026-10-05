@@ -59,7 +59,7 @@ help:
 	@echo "  $(BLUE)make openapi-generate$(RESET) Rigenera il client TypeScript"
 	@echo "  $(BLUE)make openapi-validate$(RESET) Valida il contratto OpenAPI"
 	@echo "  $(BLUE)make observability-config$(RESET) Valida la configurazione OTel Collector"
-	@echo "  $(BLUE)make observability-up$(RESET) Avvia OTel Collector e Prometheus"
+	@echo "  $(BLUE)make observability-up$(RESET) Avvia Collector, Prometheus, Alertmanager, Grafana, Loki e Alloy"
 	@echo "  $(BLUE)make local-tls$(RESET) Genera il certificato TLS locale per Traefik"
 	@echo "  $(BLUE)make trusted-local-tls$(RESET) Genera un certificato locale trusted via mkcert"
 	@echo "  $(BLUE)make fresh$(RESET)     Resetta database, Redis (sessioni/cache/rate limit) e dati generati"
@@ -190,7 +190,7 @@ observability-config:
 	docker compose run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
 
 observability-up:
-	docker compose up -d otel-collector prometheus tempo alertmanager grafana loki alloy
+	docker compose up -d otel-collector prometheus alertmanager grafana loki alloy
 
 pint:
 	docker compose build app
@@ -244,7 +244,7 @@ setup:
 	$(MAKE) frontend-build
 	$(MAKE) frontend-s3-local-upload
 	$(MAKE) release
-	docker compose up -d app nginx queue queue-communications traefik otel-collector prometheus tempo alertmanager grafana loki alloy
+	docker compose up -d app nginx queue queue-communications traefik otel-collector prometheus alertmanager grafana loki alloy
 	@echo "$(BLUE)L'ambiente è stato configurato ed è in fase di avvio.$(RESET)"
 	@echo "$(BLUE)Endpoint locale: https://localhost:8443$(RESET)"
 	@echo "$(BLUE)Grafana: https://grafana.localhost:8443$(RESET)"

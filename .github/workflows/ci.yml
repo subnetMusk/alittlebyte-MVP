@@ -507,7 +507,7 @@ jobs:
         run: docker compose --profile release run --rm migrate
 
       - name: Start runtime
-        run: docker compose up -d app queue nginx traefik otel-collector prometheus tempo alertmanager grafana
+        run: docker compose up -d app queue nginx traefik otel-collector prometheus alertmanager grafana
 
       - name: Smoke HTTPS endpoints
         run: |
