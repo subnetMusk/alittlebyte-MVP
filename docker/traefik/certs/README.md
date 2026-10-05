@@ -1,23 +1,20 @@
-# Local Traefik Certificates
+# Certificati locali di Traefik
 
-Local certificate and private key files are runtime artifacts and must not be committed.
-
-Generate them from the repository root with:
+Certificato e chiave privata locali sono artefatti runtime e non vanno committati (sono in
+`.gitignore`). Si generano dalla radice del repository:
 
 ```bash
 make local-tls
 ```
 
-The generator writes files through `scripts/tls/generate-local-cert.sh`.
+Il target usa `scripts/tls/generate-local-cert.sh` e crea un certificato self-signed: i browser
+mostrano un avviso finché non lo si considera attendibile.
 
-That default target creates a self-signed certificate, so browsers may still
-warn unless the certificate is manually trusted.
-
-For a browser-trusted local certificate, install `mkcert` on the host and run:
+Per un certificato riconosciuto dal browser, con `mkcert` installato sull'host:
 
 ```bash
 make trusted-local-tls
 ```
 
-The trusted target installs/uses the local mkcert CA on the host and writes the
-same `mvp-local.test.crt` / `mvp-local.test.key` files consumed by Traefik.
+Il target usa la CA locale di mkcert e scrive gli stessi file `mvp-local.test.crt` e
+`mvp-local.test.key` letti da Traefik.

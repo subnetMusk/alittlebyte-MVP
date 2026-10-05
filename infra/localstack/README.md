@@ -1,14 +1,8 @@
-# LocalStack Terraform
+# Terraform per LocalStack
 
-This directory contains the local AWS-like infrastructure contract for the MVP.
-
-LocalStack endpoint:
-
-```bash
-http://localhost:4566
-```
-
-Commands:
+Questa cartella contiene l'infrastruttura AWS emulata della MVP. Terraform gira solo nel container
+Compose `terraform`, contro l'endpoint interno `http://localstack:4566`; dall'host LocalStack è su
+`http://127.0.0.1:4566`.
 
 ```bash
 make infra-init
@@ -17,27 +11,22 @@ make infra-apply
 make infra-destroy
 ```
 
-Resources modelled here:
+Risorse modellate:
 
-- SQS queue and DLQ;
-- S3 bucket for local/contract document storage;
-- S3 bucket for Angular static assets;
-- Step Functions state machine for the document workflow;
-- SSM Parameter Store parameters;
-- Secrets Manager secrets;
-- EventBridge bus, rule, and SQS target;
-- SES local sender identity.
+- due code SQS (documenti, comunicazioni), ciascuna con la propria DLQ;
+- due state machine Step Functions, con le definizioni ASL in `state-machines/`, e il ruolo IAM che
+  le esegue (non applicato da LocalStack);
+- bucket S3 dei documenti, cifrato con una chiave KMS;
+- bucket S3 per gli asset statici della SPA Angular;
+- parametri SSM Parameter Store e un secret di Secrets Manager per la configurazione runtime;
+- bus EventBridge con rule e target SQS, e un'identità SES: scaffolding non usato dal codice.
 
-Compose starts LocalStack and application processes. Terraform creates AWS-like resources. The
-default frontend path is S3 local + a local CDN emulator: Terraform owns the LocalStack S3
-bucket, while the `edge-cdn` Docker service: a second Nginx that emulates the role of
-a CDN/edge (not Amazon CloudFront): fronts that bucket and proxies API calls to the application
-Nginx. It is a separate container on purpose: the application Nginx is a production image and must
-not reference LocalStack, so the emulated S3 serving stays confined to a local-only scaffold. This
-also avoids mixing frontend static assets with the optional real S3 bucket used by
-documents/Textract.
-
-Frontend static serving flow:
+Compose avvia LocalStack e i processi applicativi; Terraform crea le risorse. La SPA segue il
+percorso S3 locale più emulatore di CDN: Terraform possiede il bucket, e il servizio `edge-cdn`, un
+secondo Nginx che emula il ruolo di una CDN (non Amazon CloudFront), lo serve e inoltra le chiamate
+API all'Nginx applicativo. È un container separato apposta: l'Nginx applicativo è un'immagine di
+produzione e non deve conoscere LocalStack. Così gli asset della SPA restano separati anche dal
+bucket S3 reale opzionale dei documenti.
 
 ```bash
 make frontend-s3-local-deploy
@@ -45,8 +34,7 @@ make edge-cdn-local-url
 make frontend-serving-local-test
 ```
 
-The CDN emulator is local and Docker-based (a plain Nginx) because the LocalStack image used by
-this MVP does not expose the CloudFront API in the default local license. It validates the local
-build-to-bucket-to-edge flow, but it does not replace a real CDN: in production the role would be
-filled by AWS CloudFront (TLS certificates, edge propagation, invalidations, OAC/OAI, response
-headers policies, AWS IAM enforcement).
+L'emulatore è un Nginx in Docker perché l'immagine LocalStack usata non espone l'API CloudFront con
+la licenza predefinita. Verifica il percorso build → bucket → edge in locale, ma non sostituisce una
+CDN reale: in produzione il ruolo spetterebbe a CloudFront (certificati TLS, propagazione, invalidazioni,
+OAC, policy degli header, IAM applicato).
