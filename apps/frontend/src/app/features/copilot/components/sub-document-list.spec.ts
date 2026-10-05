@@ -270,6 +270,18 @@ describe("SubDocumentListComponent", () => {
     });
   });
 
+  it("salva un'email destinatario con spazi di contorno, che arrivano tagliati", () => {
+    const fixture = render(subDocument());
+    const emitted: UpdateExtractedDataRequest[] = [];
+    fixture.fixture.componentInstance.saveReviewRequested.subscribe((event) => emitted.push(event.payload));
+    fixture.component.form.patchValue({ recipientEmail: "  mario.rossi@example.test  " });
+
+    fixture.component.saveReview();
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].recipientEmail).toBe("mario.rossi@example.test");
+  });
+
   it.each([
     ["Mario Luigi Bianchi", "Mario Luigi", "Bianchi"],
     ["Madonna", "Madonna", null],

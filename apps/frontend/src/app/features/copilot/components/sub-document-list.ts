@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from "@angular/core";
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
+import { FormControl, FormGroup, ReactiveFormsModule } from "@angular/forms";
 import { DomSanitizer, type SafeResourceUrl } from "@angular/platform-browser";
 import { LucideCheckCircle2, LucideCopy, LucidePencil, LucideSave, LucideTrash2, LucideX } from "@lucide/angular";
 import type { SubDocument, UpdateExtractedDataRequest, UpdateSendMessageRequest } from "../../../../api/generated/model";
@@ -7,7 +7,7 @@ import { ButtonComponent } from "../../../shared/components/button/button";
 import { EmptyStateComponent } from "../../../shared/components/empty-state/empty-state";
 import { SectionComponent } from "../../../layout/section/section";
 import { capitalizeFirst, formatConfidence, formatDateForDisplay, formatFallback } from "../../../shared/util/formatters";
-import { DOCUMENT_TYPE_OPTIONS, codiceFiscaleValidator } from "../../../shared/util/document-field-validators";
+import { DOCUMENT_TYPE_OPTIONS, codiceFiscaleValidator, emailValidator } from "../../../shared/util/document-field-validators";
 import type { DocumentPreviewStatus } from "../data/document-workflow.service";
 import { DocumentStatusTimelineComponent } from "./document-status-timeline";
 import {
@@ -547,7 +547,7 @@ export class SubDocumentListComponent {
     documentDate: new FormControl("", { nonNullable: true }),
     documentType: new FormControl("", { nonNullable: true }),
     description: new FormControl("", { nonNullable: true }),
-    recipientEmail: new FormControl("", { nonNullable: true, validators: [Validators.email] }),
+    recipientEmail: new FormControl("", { nonNullable: true, validators: [emailValidator] }),
     fiscalCode: new FormControl("", { nonNullable: true, validators: [codiceFiscaleValidator] }),
     employeeId: new FormControl("", { nonNullable: true })
   });

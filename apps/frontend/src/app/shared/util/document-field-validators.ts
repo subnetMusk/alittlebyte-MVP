@@ -1,4 +1,4 @@
-import type { AbstractControl, ValidationErrors } from "@angular/forms";
+import { type AbstractControl, FormControl, type ValidationErrors, Validators } from "@angular/forms";
 
 /** Tipologie ammesse per "documentType" (UC-43) — allineate all'enum OpenAPI. */
 export const DOCUMENT_TYPE_OPTIONS = [
@@ -59,4 +59,18 @@ export function codiceFiscaleValidator(control: AbstractControl): ValidationErro
   }
 
   return isValidCodiceFiscale(value) ? null : { codiceFiscale: true };
+}
+
+/**
+ * Come `Validators.email`, ma ignora gli spazi di contorno: il salvataggio li
+ * taglia, quindi non devono invalidare il campo mentre lo si compila.
+ */
+export function emailValidator(control: AbstractControl): ValidationErrors | null {
+  const value = ((control.value as string | null) ?? "").trim();
+
+  if (value === "") {
+    return null;
+  }
+
+  return Validators.email(new FormControl(value)) === null ? null : { email: true };
 }

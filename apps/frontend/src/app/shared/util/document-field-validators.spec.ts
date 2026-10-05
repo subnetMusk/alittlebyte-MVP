@@ -2,6 +2,7 @@ import { FormControl } from "@angular/forms";
 import {
   DOCUMENT_TYPE_OPTIONS,
   codiceFiscaleValidator,
+  emailValidator,
   isValidCodiceFiscale
 } from "./document-field-validators";
 
@@ -70,6 +71,22 @@ describe("codiceFiscaleValidator", () => {
 
   it("ignora gli spazi attorno al codice", () => {
     expect(codiceFiscaleValidator(new FormControl(`  ${VALID_CODES[0]}  `))).toBeNull();
+  });
+});
+
+describe("emailValidator", () => {
+  it("considera valido un campo vuoto o di soli spazi", () => {
+    expect(emailValidator(new FormControl(""))).toBeNull();
+    expect(emailValidator(new FormControl("   "))).toBeNull();
+    expect(emailValidator(new FormControl(null))).toBeNull();
+  });
+
+  it("ignora gli spazi attorno a un indirizzo valido, che il salvataggio taglia", () => {
+    expect(emailValidator(new FormControl("  mario.rossi@example.test  "))).toBeNull();
+  });
+
+  it("segnala un indirizzo non valido", () => {
+    expect(emailValidator(new FormControl("non-valida"))).toEqual({ email: true });
   });
 });
 
