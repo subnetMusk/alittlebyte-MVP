@@ -79,7 +79,7 @@ help:
 	@echo "  $(BLUE)make refresh-runtime$(RESET) Riapplica SSM/Secrets e ricarica app+queue (dopo modifiche al .env)"
 	@echo "  $(BLUE)make verify-fast$(RESET)   Esegue i controlli locali rapidi"
 	@echo "  $(BLUE)make verify$(RESET)        Esegue la batteria completa locale"
-	@echo "  $(BLUE)make aws-smoke$(RESET)     Smoke opzionale su AWS reale, richiede credenziali"
+	@echo "  $(BLUE)make aws-smoke$(RESET)     Controlla la configurazione per AWS reale nel .env, senza chiamare i servizi"
 	@echo "  $(BLUE)make reset-all$(RESET)     Reset TOTALE: volumi locali + S3 reale, poi setup da zero (FORCE=1 senza conferma)"
 
 # Quality gate rapido: usa solo container e non richiede credenziali AWS reali.
