@@ -489,7 +489,7 @@ services:
     environment:
       AWS_DEFAULT_REGION: ${MVP_AWS_DEFAULT_REGION:-eu-north-1}
       DEBUG: ${LOCALSTACK_DEBUG:-0}
-      SERVICES: s3,sqs,stepfunctions,ssm,secretsmanager,events,ses,iam,sts,logs
+      SERVICES: s3,sqs,stepfunctions,ssm,secretsmanager,events,ses,iam,sts,logs,kms
     # Bind solo su loopback: serve a terraform/aws CLI dall'host, non alla LAN
     ports:
       - "127.0.0.1:${LOCALSTACK_PORT:-4566}:4566"
