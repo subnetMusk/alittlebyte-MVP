@@ -213,9 +213,14 @@ in GGUF, esportato da ComfyUI con «Esporta (API)». In ComfyUI richiede:
 | VAE | `ae.safetensors` |
 
 Il grafo usa 8 passi, CFG 1, sampler `res_multistep` con scheduler `simple`; la copertina è
-1280×720. Su una RTX 2070 Super da 8 GB un'immagine 1024×1024 richiede circa tre minuti. Per un altro
-modello si esporta un altro workflow in formato API, si sostituiscono i valori con i segnaposto e lo
-si indica con `COMFYUI_WORKFLOW`; il file deve stare nell'immagine.
+1280×720. Su una RTX 2070 Super da 8 GB un'immagine 1024×1024 richiede circa tre minuti.
+
+In alternativa `COMFYUI_WORKFLOW=sdxl-lightning.json` usa il secondo workflow versionato, SDXL
+Lightning a 4 passi con il checkpoint `sdxl_lightning_4step.safetensors`: più leggero, e con un prompt
+negativo che però con CFG 1, il valore del workflow, non ha effetto. `COMFYUI_WORKFLOW` accetta il
+nome di un workflow versionato in `resources/ai/comfyui/` oppure il percorso di un file nell'immagine.
+Per un altro modello si esporta un altro workflow in formato API, si sostituiscono i valori con i
+segnaposto e lo si indica con `COMFYUI_WORKFLOW`.
 
 Oltre a `LOCAL_COVER_PROVIDER=comfyui` serve `COMFYUI_BASE_URL` (default
 `http://host.docker.internal:8188`). Con Docker Desktop un ComfyUI in ascolto solo su `127.0.0.1` è
@@ -233,7 +238,15 @@ memoria.
 
 Ollama, ComfyUI e lo stack si contendono memoria e GPU. Su una macchina da 16 GB con lo stack completo
 avviato la generazione ha superato il limite, e la copertina è risultata degradata: per l'uso normale
-resta consigliato `mock`.
+resta consigliato `mock`. Il campionamento in sé è breve; il tempo va nel caricamento dei modelli
+quando la RAM è esaurita. Due regolazioni riducono la contesa:
+
+- `LOCAL_LLM_KEEP_ALIVE=0` fa scaricare a Ollama il modello testuale subito dopo ogni risposta, e
+  lascia la VRAM alla copertina. Il prezzo è ricaricarlo a ogni chiamata, anche durante l'analisi dei
+  documenti.
+- ComfyUI riserva per default fino a circa 6,5 GB di RAM bloccata (*pinned memory*), che Windows non
+  può spostare nel file di paging. Su una macchina da 16 GB conviene avviarlo con
+  `--disable-pinned-memory`.
 
 ## Verifiche
 
