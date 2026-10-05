@@ -307,8 +307,10 @@ services:
     environment:
       <<: *backend-environment
     depends_on:
+      # Le migrazioni falliscono se Postgres sta ancora completando initdb: si
+      # aspetta il suo healthcheck, non il solo avvio del container.
       postgres:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
       localstack:
