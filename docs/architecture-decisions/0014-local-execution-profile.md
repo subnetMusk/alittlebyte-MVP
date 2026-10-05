@@ -41,8 +41,9 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
   invariata. Il testo di un text layer non è riconosciuto e porta confidenza 100.
 - **Copertina con una strategia di adapter.** `LOCAL_COVER_PROVIDER=mock` (default) produce una
   copertina deterministica, con palette per tono e motivo per stile; `comfyui` la genera con un server
-  ComfyUI locale, il cui grafo e checkpoint sono configurazione di deployment. Il profilo locale
-  funziona per intero anche senza ComfyUI.
+  ComfyUI locale eseguendo un workflow in formato API, modelli compresi, che è configurazione di
+  deployment: il repository ne versiona uno per Z-Image-Turbo in GGUF. Il profilo locale funziona per
+  intero anche senza ComfyUI.
 - **Nessun ripiego fra provider.** Un profilo o un provider di copertina non validi fermano l'avvio;
   un errore di Ollama fa fallire la generazione come un errore di Bedrock
   ([ADR 0005](0005-no-automatic-fallbacks.md)); un errore di ComfyUI degrada la copertina con un
@@ -61,6 +62,9 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
   produzione no.
 - L'OCR locale ha metriche proprie (`mvp_local_ocr_*`) e una sezione nella dashboard `AI and OCR
   Quality`; le metriche Textract restano di Textract.
+- Il provider ComfyUI ha un tempo massimo di 270 secondi, sotto il timeout del task `GenerateCover`
+  (300 secondi, con un retry su timeout): una generazione più lunga degrada la copertina invece di
+  farne partire una seconda.
 - Limiti noti: il messaggio di fallimento dell'OCR scritto dal caso d'uso cita ancora Textract; una
   copertina mock è etichettata "Generata dall'AI", perché il dominio distingue solo copertine
   generate e caricate a mano; la qualità dell'estrazione dipende dal modello locale scelto.
@@ -88,7 +92,7 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
 - Adapter: `app/Mvp/Documents/Adapters/Outbound/Ai/OllamaDocumentAiAdapter.php`,
   `app/Mvp/Documents/Adapters/Outbound/Ocr/LocalPdfOcrAdapter.php`,
   `app/Mvp/Communications/Adapters/Outbound/Ai/LocalCommunicationAiAdapter.php`.
-- Workflow ComfyUI di esempio: `resources/ai/comfyui/cover-workflow.json`.
+- Workflow ComfyUI versionato: `resources/ai/comfyui/z-image-turbo.json`.
 - Test: `tests/Unit/ExecutionProfileBindingTest.php`, `ExecutionProfileBoundaryTest.php`,
   `TextModelProviderContractTest.php`, `OllamaServiceTest.php`, `LocalPdfOcrAdapterTest.php`,
   `CoverImageGeneratorTest.php`.

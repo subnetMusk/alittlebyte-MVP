@@ -137,7 +137,8 @@ profilo `local` fa girare entrambi i flussi senza credenziali AWS:
 - **OCR locale e deterministico**: il text layer del PDF quando c'è, Tesseract per le pagine
   scansionate, mai un modello generativo;
 - **copertina deterministica** (default), con palette e motivo scelti da tono e stile;
-- **generazione locale dell'immagine**, facoltativa, tramite un provider configurabile (ComfyUI).
+- **generazione locale dell'immagine**, facoltativa, tramite un provider configurabile (ComfyUI,
+  con un workflow Z-Image-Turbo versionato).
 
 Il profilo non tocca dominio né casi d'uso: ogni provider locale è un nuovo adapter dietro una porta
 già esistente, scelto solo nel composition root. Step Functions, code, task token, SSE e

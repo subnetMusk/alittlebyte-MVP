@@ -165,7 +165,8 @@ Prerequisiti:
 
 - Ollama in esecuzione sull'host, con il modello scaricato: `ollama pull qwen3.5:9b`;
 - l'immagine di sviluppo costruita da `make setup`, che contiene `poppler-utils` e Tesseract;
-- solo per `LOCAL_COVER_PROVIDER=comfyui`: ComfyUI raggiungibile e un checkpoint installato.
+- solo per `LOCAL_COVER_PROVIDER=comfyui`: ComfyUI raggiungibile, con i nodi e i modelli richiesti
+  dal workflow (vedi sotto).
 
 Attivazione, nel `.env`:
 
@@ -195,15 +196,38 @@ campo dell'[ADR 0013](../architecture-decisions/0013-per-field-ocr-confidence.md
 stesso modo, quindi una scansione mediocre finisce in revisione come con Textract. Metriche e
 pannelli nella dashboard `AI and OCR Quality`, sezione "OCR locale".
 
-**ComfyUI.** Con `LOCAL_COVER_PROVIDER=comfyui` servono `COMFYUI_BASE_URL` (default
-`http://host.docker.internal:8188`) e `COMFYUI_CHECKPOINT`, il nome del checkpoint in ComfyUI. Il
-grafo eseguito è `resources/ai/comfyui/cover-workflow.json`, un txt2img standard in formato API;
-per modelli che richiedono un grafo diverso si indica un altro file con `COMFYUI_WORKFLOW`, che deve
-stare nell'immagine. Il codice sostituisce solo i segnaposto `%prompt%`, `%negative_prompt%`,
-`%seed%`, `%width%`, `%height%` e `%checkpoint%`; passi, sampler e CFG restano nel grafo. Il seed
-deriva dal contenuto, quindi la stessa richiesta produce la stessa copertina. Se ComfyUI non risponde
-o non produce un'immagine entro 240 secondi, la copertina risulta degradata con il motivo, come
-avviene con Bedrock.
+**ComfyUI.** `comfyui` è un provider generico: esegue un workflow in formato API letto da file, e il
+codice ne sostituisce solo i segnaposto `%prompt%` (obbligatorio), `%negative_prompt%`, `%seed%`,
+`%width%`, `%height%` e `%filename_prefix%`. Modelli, passi, sampler e CFG restano nel grafo. Il seed
+deriva dal contenuto, quindi la stessa richiesta produce la stessa copertina. Le immagini restano
+anche nella cartella di output di ComfyUI, sotto `alittlebyte/`.
+
+Il workflow versionato, e predefinito, è `resources/ai/comfyui/z-image-turbo.json`: Z-Image-Turbo
+in GGUF, esportato da ComfyUI con «Esporta (API)». In ComfyUI richiede:
+
+| Cosa | Valore |
+| --- | --- |
+| Nodi aggiuntivi | ComfyUI-GGUF (`UnetLoaderGGUF`, `CLIPLoaderGGUF`) |
+| Modello di diffusione | `z-image-turbo-Q4_K_M.gguf` |
+| Text encoder | `Qwen3-4B-Q4_K_S.gguf`, tipo `lumina2` |
+| VAE | `ae.safetensors` |
+
+Il grafo usa 8 passi, CFG 1, sampler `res_multistep` con scheduler `simple`; la copertina è
+1280×720. Su una RTX 2070 Super da 8 GB un'immagine 1024×1024 richiede circa tre minuti. Per un altro
+modello si esporta un altro workflow in formato API, si sostituiscono i valori con i segnaposto e lo
+si indica con `COMFYUI_WORKFLOW`; il file deve stare nell'immagine.
+
+Oltre a `LOCAL_COVER_PROVIDER=comfyui` serve `COMFYUI_BASE_URL` (default
+`http://host.docker.internal:8188`). Con Docker Desktop un ComfyUI in ascolto solo su `127.0.0.1` è
+già raggiungibile da quell'indirizzo, e non serve `--listen`. Con Docker Engine su Linux
+`host.docker.internal` porta al gateway della rete Docker, su cui ComfyUI deve essere in ascolto. In
+entrambi i casi ComfyUI resta un servizio della macchina di sviluppo.
+
+Il tempo massimo è 270 secondi per invio, generazione e download: resta sotto il timeout del task
+`GenerateCover` (300 secondi, con un retry su timeout), che altrimenti scadrebbe e accoderebbe una
+seconda generazione. Se ComfyUI non risponde, interrompe l'esecuzione o non produce un'immagine entro
+quel tempo, la copertina risulta degradata con il motivo, come avviene con Bedrock. Ollama e ComfyUI
+si contendono la memoria della GPU: per l'uso normale resta consigliato `mock`.
 
 ## Verifiche
 

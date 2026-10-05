@@ -149,9 +149,10 @@ ORDER BY count(*) DESC;
 singolo prompt rifiutato non allerta nessuno.
 
 Nel profilo di esecuzione locale la copertina `mock` non degrada mai. Con `comfyui` valgono gli
-stessi motivi: `model_not_configured` se mancano URL, checkpoint o workflow, `model_error` se ComfyUI
-non risponde o non finisce entro 240 secondi, `invalid_response` se rifiuta il grafo, `no_payload` se
-non restituisce un'immagine.
+stessi motivi: `model_not_configured` se l'URL non è valido o il workflow manca, non è in formato API
+o non contiene `%prompt%`; `model_error` se ComfyUI non risponde, interrompe l'esecuzione o non
+finisce entro 270 secondi; `invalid_response` se rifiuta il grafo; `no_payload` se termina senza
+un'immagine. Il dettaglio finisce nel log del worker.
 
 ## PDF finale
 
