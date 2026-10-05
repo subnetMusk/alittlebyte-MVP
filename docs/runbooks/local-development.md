@@ -225,9 +225,15 @@ entrambi i casi ComfyUI resta un servizio della macchina di sviluppo.
 
 Il tempo massimo è 270 secondi per invio, generazione e download: resta sotto il timeout del task
 `GenerateCover` (300 secondi, con un retry su timeout), che altrimenti scadrebbe e accoderebbe una
-seconda generazione. Se ComfyUI non risponde, interrompe l'esecuzione o non produce un'immagine entro
-quel tempo, la copertina risulta degradata con il motivo, come avviene con Bedrock. Ollama e ComfyUI
-si contendono la memoria della GPU: per l'uso normale resta consigliato `mock`.
+seconda generazione. Mentre carica i modelli ComfyUI può non rispondere per decine di
+secondi: l'attesa continua fino a quel limite. Se ComfyUI interrompe l'esecuzione o non produce
+un'immagine in tempo, la copertina risulta degradata con il motivo, come avviene con Bedrock, e il
+prompt scaduto viene tolto dalla coda di ComfyUI o interrotto, così non continua a occupare GPU e
+memoria.
+
+Ollama, ComfyUI e lo stack si contendono memoria e GPU. Su una macchina da 16 GB con lo stack completo
+avviato la generazione ha superato il limite, e la copertina è risultata degradata: per l'uso normale
+resta consigliato `mock`.
 
 ## Verifiche
 
