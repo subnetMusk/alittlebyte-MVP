@@ -971,6 +971,25 @@ test('send message correction is partial and leaves other fields untouched', fun
         ->and($document['sendRecipient'])->toBe('Mario Rossi');
 });
 
+test('send message correction keeps the precompiled recipient name when only the subject changes', function () {
+    // Il form rimanda sempre il destinatario: con il default, che e' il nome
+    // del dipendente, una regola email bloccherebbe ogni correzione.
+    $subDocument = SubDocument::factory()->create();
+    ExtractedData::factory()->create([
+        'sub_document_id' => $subDocument->id,
+        'employee_first_name' => 'Mario',
+        'employee_last_name' => 'Rossi',
+    ]);
+
+    $this->putJson("/api/v1/documents/{$subDocument->id}/send-message", [
+        'recipient' => 'Mario Rossi',
+        'subject' => 'Oggetto corretto a mano',
+    ])
+        ->assertOk()
+        ->assertJsonPath('document.sendRecipient', 'Mario Rossi')
+        ->assertJsonPath('document.sendSubject', 'Oggetto corretto a mano');
+});
+
 test('send message correction rejects cross tenant access', function () {
     config(['mvp.identity.mode' => 'trusted_headers']);
     $subDocument = SubDocument::factory()->create();
