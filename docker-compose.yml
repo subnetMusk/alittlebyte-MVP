@@ -1,3 +1,9 @@
+# Servizi i cui log Alloy raccoglie e invia a Loki: la discovery filtra su
+# questa label e non sul nome del progetto Compose, che resta libero (vedi
+# docker/alloy/config.alloy e docs/runbooks/observability.md).
+x-collected-logs: &collected-logs
+  com.alittlebyte.observability.logs: "true"
+
 x-backend-environment: &backend-environment
   CONFIG_SOURCE: aws
   CONFIG_SSM_PATH: ${CONFIG_SSM_PATH:-/mvp/app}
@@ -34,6 +40,7 @@ services:
     depends_on:
       edge-cdn:
         condition: service_healthy
+    labels: *collected-logs
     networks:
       - edge
       - observability
@@ -49,6 +56,7 @@ services:
         condition: service_healthy
       traefik:
         condition: service_started
+    labels: *collected-logs
     # backend: scrape di nginx:8081; observability: scrape di traefik:9100 ed
     # esposizione delle metriche a Prometheus su :9464
     networks:
@@ -72,6 +80,7 @@ services:
         condition: service_started
       alertmanager:
         condition: service_started
+    labels: *collected-logs
     networks:
       - observability
 
@@ -85,6 +94,7 @@ services:
     volumes:
       - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
+    labels: *collected-logs
     networks:
       - observability
 
@@ -107,6 +117,7 @@ services:
         condition: service_started
       loki:
         condition: service_started
+    labels: *collected-logs
     networks:
       - observability
 
@@ -117,6 +128,7 @@ services:
     volumes:
       - ./docker/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
+    labels: *collected-logs
     networks:
       - observability
 
@@ -134,6 +146,7 @@ services:
     depends_on:
       loki:
         condition: service_started
+    labels: *collected-logs
     networks:
       - observability
 
@@ -149,6 +162,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
+    labels: *collected-logs
     # edge: riceve da traefik; backend: inoltra a php-fpm (app)
     networks:
       - edge
@@ -168,6 +182,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
+    labels: *collected-logs
     # edge: riceve da Traefik e inoltra /api a Nginx; backend: legge S3 LocalStack.
     networks:
       - edge
@@ -197,6 +212,7 @@ services:
       # Shared with the queue worker so domain metrics recorded by the consumer
       # (Textract, SQS, workflow completion) reach the /internal/metrics exporter.
       - observability-metrics:/var/www/html/storage/app/private/observability
+    labels: *collected-logs
     networks:
       - backend
 
@@ -221,6 +237,7 @@ services:
         condition: service_healthy
     volumes:
       - observability-metrics:/var/www/html/storage/app/private/observability
+    labels: *collected-logs
     networks:
       - backend
 
@@ -249,6 +266,7 @@ services:
       # Stesso volume del worker documentale: le metriche di dominio scritte qui
       # devono raggiungere l'exporter /internal/metrics servito da app.
       - observability-metrics:/var/www/html/storage/app/private/observability
+    labels: *collected-logs
     networks:
       - backend
 
@@ -270,6 +288,7 @@ services:
         condition: service_started
       localstack:
         condition: service_healthy
+    labels: *collected-logs
     networks:
       - backend
 
@@ -406,6 +425,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    labels: *collected-logs
     networks:
       - backend
 
@@ -433,6 +453,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    labels: *collected-logs
     networks:
       - backend
 
@@ -452,6 +473,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    labels: *collected-logs
     networks:
       - backend
 

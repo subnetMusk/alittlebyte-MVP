@@ -1,47 +1,51 @@
-// Grafana Alloy — collects logs from this compose project's containers and ships
-// them to Loki. Alloy is the supported successor of Promtail (EOL 2026-03).
+// Grafana Alloy: raccoglie i log dei container etichettati con
+// com.alittlebyte.observability.logs=true (vedi x-collected-logs in
+// docker-compose.yml) e li invia a Loki. Alloy sostituisce Promtail (EOL 2026-03).
 
 logging {
-  level  = "warn"
-  format = "logfmt"
+	level  = "warn"
+	format = "logfmt"
 }
 
-// Discover only containers belonging to the "mvp" compose project.
-discovery.docker "mvp" {
-  host = "unix:///var/run/docker.sock"
+// Il filtro usa una label dichiarata dai servizi, non il nome del progetto
+// Compose: quello dipende dalla cartella del checkout e resta libero. Il
+// demone Docker e' condiviso, quindi con piu' checkout accesi Alloy vede i
+// container etichettati di tutti: la label project li tiene distinguibili.
+discovery.docker "collected" {
+	host = "unix:///var/run/docker.sock"
 
-  filter {
-    name   = "label"
-    values = ["com.docker.compose.project=mvp"]
-  }
+	filter {
+		name   = "label"
+		values = ["com.alittlebyte.observability.logs=true"]
+	}
 }
 
-// Map Docker metadata to useful Loki labels (service, container, project).
-discovery.relabel "mvp" {
-  targets = discovery.docker.mvp.targets
+// Label Loki: service, container e project (il progetto Compose del checkout).
+discovery.relabel "collected" {
+	targets = discovery.docker.collected.targets
 
-  rule {
-    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
-    target_label  = "service"
-  }
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
 
-  rule {
-    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
-    target_label  = "project"
-  }
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		target_label  = "project"
+	}
 
-  rule {
-    source_labels = ["__meta_docker_container_name"]
-    regex         = "/(.*)"
-    target_label  = "container"
-  }
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
 }
 
-loki.source.docker "mvp" {
-  host             = "unix:///var/run/docker.sock"
-  targets          = discovery.relabel.mvp.output
-  forward_to       = [loki.write.default.receiver]
-  refresh_interval = "10s"
+loki.source.docker "collected" {
+	host             = "unix:///var/run/docker.sock"
+	targets          = discovery.relabel.collected.output
+	forward_to       = [loki.write.default.receiver]
+	refresh_interval = "10s"
 }
 
 // Il livello non viene promosso a label qui, per non introdurre cardinalita'
@@ -50,7 +54,7 @@ loki.source.docker "mvp" {
 // JSON di Monolog sia il logfmt dei container di infrastruttura.
 
 loki.write "default" {
-  endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
-  }
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
 }

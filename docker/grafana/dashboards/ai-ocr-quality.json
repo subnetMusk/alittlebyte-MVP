@@ -12,6 +12,39 @@
     "from": "now-6h",
     "to": "now"
   },
+  "templating": {
+    "list": [
+      {
+        "name": "project",
+        "label": "Progetto Compose",
+        "description": "Checkout da cui provengono i log (label project di Alloy). All li include tutti.",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "type": 1,
+          "label": "project",
+          "stream": "",
+          "refId": "LokiVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values(project)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".+",
+        "multi": false,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1,
+        "hide": 0,
+        "options": []
+      }
+    ]
+  },
   "panels": [
     {
       "type": "row",
@@ -683,7 +716,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{project=\"mvp\", service=\"queue\"} |~ \"(?i)level_name.{0,6}(error|critical)\" |~ \"(?i)textract|bedrock|extract|ocr|workflow\"",
+          "expr": "{project=~\"$project\", service=\"queue\"} |~ \"(?i)level_name.{0,6}(error|critical)\" |~ \"(?i)textract|bedrock|extract|ocr|workflow\"",
           "datasource": {
             "type": "loki",
             "uid": "loki"
