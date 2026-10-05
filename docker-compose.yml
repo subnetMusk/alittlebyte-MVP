@@ -80,6 +80,11 @@ services:
         condition: service_started
       alertmanager:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     labels: *collected-logs
     networks:
       - observability
@@ -94,6 +99,11 @@ services:
     volumes:
       - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     labels: *collected-logs
     networks:
       - observability
@@ -117,6 +127,14 @@ services:
         condition: service_started
       loki:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      # Al primo avvio Grafana esegue centinaia di migrazioni del database
+      # interno: su Docker Desktop richiedono alcuni minuti.
+      start_period: 300s
     labels: *collected-logs
     networks:
       - observability
@@ -128,6 +146,13 @@ services:
     volumes:
       - ./docker/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      # /ready risponde 503 finche' l'ingester non ha completato l'avvio.
+      start_period: 30s
     labels: *collected-logs
     networks:
       - observability
