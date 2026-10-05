@@ -23,7 +23,7 @@ per le evidenze implementative di dettaglio [`../archive/implementation-overview
 
 ## Scelte dell'ambiente locale
 
-Tre scelte valgono solo perché lo stack gira in locale. Sono dichiarate qui perché fuori da quel
+Quattro scelte valgono solo perché lo stack gira in locale. Sono dichiarate qui perché fuori da quel
 contesto andrebbero cambiate.
 
 - **Socket Docker in Alloy.** Alloy monta `/var/run/docker.sock` per scoprire i container e
@@ -41,6 +41,10 @@ contesto andrebbero cambiate.
   solo Nginx gli inoltra richieste (FastCGI); Traefik non accetta header inoltrati dal client, perché
   non ha `forwardedHeaders` configurati. Su un'infrastruttura reale la lista va ristretta agli
   indirizzi del load balancer.
+- **Provider del profilo di esecuzione locale.** Con `MVP_EXECUTION_PROFILE=local` i worker
+  chiamano Ollama e, se scelto, ComfyUI su `host.docker.internal`, senza autenticazione né TLS. È
+  pensato per una macchina di sviluppo: fuori da quel contesto i due servizi andrebbero messi dietro
+  un endpoint autenticato.
 
 ## Riferimenti
 

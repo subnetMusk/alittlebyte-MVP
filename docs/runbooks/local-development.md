@@ -148,6 +148,62 @@ normalmente e ogni copertina risulta degradata con il motivo: è il comportament
 necessarie e stampa l'ambiente con `php artisan about`, senza chiamare i servizi. Lo smoke vero su
 S3, Textract e Bedrock è il workflow manuale `aws-smoke.yml` ([`ci-cd.md`](ci-cd.md)).
 
+## Profilo di esecuzione locale
+
+Estensione del fork ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)): con
+`MVP_EXECUTION_PROFILE=local` i due flussi girano senza credenziali AWS per AI e OCR. Il profilo
+`standard`, il default, resta quello dell'MVP. Workflow, code, SSE e persistenza sono gli stessi nei
+due profili: cambiano solo gli adapter dietro le porte.
+
+| Passo | `standard` | `local` |
+| --- | --- | --- |
+| Generazione, split ed estrazione | Bedrock | Modello servito da Ollama sull'host (`LOCAL_LLM_MODEL`, default `qwen3.5:9b`) |
+| OCR | Textract, se `TEXTRACT_ENABLED=true` | `pdftotext` per le pagine con text layer, Tesseract (italiano e inglese) per le scansioni |
+| Copertina | Bedrock | `mock` (default): immagine deterministica per tono e stile; `comfyui`: server ComfyUI locale |
+
+Prerequisiti:
+
+- Ollama in esecuzione sull'host, con il modello scaricato: `ollama pull qwen3.5:9b`;
+- l'immagine di sviluppo costruita da `make setup`, che contiene `poppler-utils` e Tesseract;
+- solo per `LOCAL_COVER_PROVIDER=comfyui`: ComfyUI raggiungibile e un checkpoint installato.
+
+Attivazione, nel `.env`:
+
+```bash
+MVP_EXECUTION_PROFILE=local
+```
+
+poi `docker compose up -d app queue queue-communications`, che ricrea i tre container con il nuovo
+ambiente. Le variabili non passano da SSM, quindi non serve `make refresh-runtime`. Per verificare
+quale adapter è attivo:
+
+```bash
+docker compose exec app php artisan tinker --execute="echo get_class(app(App\Mvp\Documents\Domain\Ports\Outbound\OcrGatewayPort::class));"
+```
+
+Un valore non previsto di `MVP_EXECUTION_PROFILE` o di `LOCAL_COVER_PROVIDER` ferma l'applicazione
+all'avvio con l'elenco dei valori ammessi: non c'è ripiego su un altro provider. Se Ollama non
+risponde o il modello manca, la generazione o l'analisi falliscono con un messaggio che indica cosa
+controllare. Il primo uso del modello è lento, perché Ollama lo carica in memoria
+(`LOCAL_LLM_TIMEOUT_SECONDS`, default 300).
+
+**OCR locale.** Ogni pagina con almeno qualche carattere di testo viene letta dal text layer, con
+confidenza 100: il testo non è riconosciuto, è quello del PDF. Le altre pagine vengono rasterizzate a
+300 dpi e passate a Tesseract; la confidenza di ogni riga è la media delle sue parole. Le soglie per
+campo dell'[ADR 0013](../architecture-decisions/0013-per-field-ocr-confidence.md) si applicano allo
+stesso modo, quindi una scansione mediocre finisce in revisione come con Textract. Metriche e
+pannelli nella dashboard `AI and OCR Quality`, sezione "OCR locale".
+
+**ComfyUI.** Con `LOCAL_COVER_PROVIDER=comfyui` servono `COMFYUI_BASE_URL` (default
+`http://host.docker.internal:8188`) e `COMFYUI_CHECKPOINT`, il nome del checkpoint in ComfyUI. Il
+grafo eseguito è `resources/ai/comfyui/cover-workflow.json`, un txt2img standard in formato API;
+per modelli che richiedono un grafo diverso si indica un altro file con `COMFYUI_WORKFLOW`, che deve
+stare nell'immagine. Il codice sostituisce solo i segnaposto `%prompt%`, `%negative_prompt%`,
+`%seed%`, `%width%`, `%height%` e `%checkpoint%`; passi, sampler e CFG restano nel grafo. Il seed
+deriva dal contenuto, quindi la stessa richiesta produce la stessa copertina. Se ComfyUI non risponde
+o non produce un'immagine entro 240 secondi, la copertina risulta degradata con il motivo, come
+avviene con Bedrock.
+
 ## Verifiche
 
 | Target | Cosa controlla |

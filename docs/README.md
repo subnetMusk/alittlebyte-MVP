@@ -35,7 +35,9 @@ Ogni tema ha un solo documento di riferimento:
 - [Frontend](architecture/frontend.md): ViewModel, client SSE, sistema visivo.
 - [AWS Well-Architected](architecture/aws-well-architected-mapping.md): pilastri e relative evidenze.
 - [Valutazione della Row-Level Security](architecture/postgres-rls-assessment.md).
-- [Architecture Decision Records](architecture-decisions/README.md).
+- [Architecture Decision Records](architecture-decisions/README.md), compreso il
+  [profilo di esecuzione locale](architecture-decisions/0014-local-execution-profile.md) aggiunto dal
+  fork.
 
 ## Runbook
 

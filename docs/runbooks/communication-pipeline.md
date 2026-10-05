@@ -148,6 +148,11 @@ ORDER BY count(*) DESC;
 `CommunicationCoverGenerationDegraded` scatta solo oltre tre degradazioni in trenta minuti: un
 singolo prompt rifiutato non allerta nessuno.
 
+Nel profilo di esecuzione locale la copertina `mock` non degrada mai. Con `comfyui` valgono gli
+stessi motivi: `model_not_configured` se mancano URL, checkpoint o workflow, `model_error` se ComfyUI
+non risponde o non finisce entro 240 secondi, `invalid_response` se rifiuta il grafo, `no_payload` se
+non restituisce un'immagine.
+
 ## PDF finale
 
 `DompdfCommunicationPdfRenderer`, dietro `CommunicationPdfRendererPort` e orchestrato da

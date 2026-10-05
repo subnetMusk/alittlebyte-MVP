@@ -48,6 +48,10 @@ specifiche o registri di lavoro che appesantivano l'ADR senza cambiarne la decis
 | [0011](0011-frontend-presentation-model-and-sse-client.md) | ViewModel puro (Presentation Model) e client SSE su `fetch` | Accepted, implemented |
 | [0012](0012-frontend-design-system-and-ui-language.md) | Sistema visivo e linguaggio dell'interfaccia della SPA | Accepted, implemented |
 | [0013](0013-per-field-ocr-confidence.md) | Confidenza per campo invece che media di pagina | Accepted, implemented |
+| [0014](0014-local-execution-profile.md) | Profilo di esecuzione locale per AI e OCR (decisione del fork, dopo l'MVP) | Accepted, implemented |
+
+Dal 0014 la numerazione è propria del fork. Gli ADR 0014 e 0015 della versione ufficiale, che
+sostituiscono lo stack di osservabilità con metriche CloudWatch, non sono stati adottati.
 
 ## Aggiungere un ADR
 

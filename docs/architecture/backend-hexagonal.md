@@ -26,8 +26,10 @@ app/Mvp/Documents/
 │   └── Listeners/         14 listener: un evento di dominio → audit e metriche
 └── Adapters/
     ├── Primary/Workflow/  DocumentWorkflowTaskHandler
-    └── Outbound/          Persistence/EloquentDocumentRepository, Ocr/TextractOcrAdapter,
-                           Ai/BedrockDocumentAiAdapter, Storage/FlysystemDocumentStorageAdapter,
+    └── Outbound/          Persistence/EloquentDocumentRepository,
+                           Ocr/TextractOcrAdapter, Ocr/LocalPdfOcrAdapter,
+                           Ai/BedrockDocumentAiAdapter, Ai/OllamaDocumentAiAdapter,
+                           Storage/FlysystemDocumentStorageAdapter,
                            Pdf/DompdfSendMessageRenderer, Events/LaravelDocumentEventDispatcher
 
 app/Mvp/Communications/
@@ -44,7 +46,7 @@ app/Mvp/Communications/
 │   └── Listeners/         21 listener
 └── Adapters/
     ├── Primary/Workflow/  CommunicationWorkflowTaskHandler
-    └── Outbound/          Persistence/, Ai/, Pdf/, Storage/, Events/
+    └── Outbound/          Persistence/, Ai/ (Bedrock e locale), Pdf/, Storage/, Events/
 
 app/Mvp/Workflow/          infrastruttura condivisa dalle due pipeline
 ├── Contracts/             WorkflowTaskHandler, WorkflowSubject
@@ -72,6 +74,32 @@ poi la copertina" sta nell'entità, non nei servizi. In una prima versione la te
 Terminologia usata nel codice e nei documenti: dominio, applicazione, adapter primario, adapter
 secondario, porta primaria, porta secondaria.
 
+## Profilo di esecuzione
+
+Il fork aggiunge un profilo di esecuzione locale ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)),
+che dimostra cosa permette il confine delle porte: cambiano i provider esterni, non una riga di
+dominio o di applicazione.
+
+| Porta | `MVP_EXECUTION_PROFILE=standard` (default) | `MVP_EXECUTION_PROFILE=local` |
+| --- | --- | --- |
+| `DocumentAiGatewayPort` | `BedrockDocumentAiAdapter` | `OllamaDocumentAiAdapter` |
+| `CommunicationAiGatewayPort` | `BedrockCommunicationAiAdapter` | `LocalCommunicationAiAdapter` |
+| `OcrGatewayPort` | `TextractOcrAdapter` | `LocalPdfOcrAdapter` |
+
+La scelta sta solo in `AppServiceProvider`, con un `match` sul profilo per ciascuna delle tre
+porte; `ExecutionProfileBoundaryTest` fallisce se il profilo compare altrove nel codice. Gli adapter
+locali seguono gli stessi schemi di quelli AWS:
+
+- `OllamaService` è la controparte di `BedrockService` in `app/Mvp/Ai` e usa gli stessi prompt
+  (`TextModelPrompts`), la stessa decodifica (`ModelJsonResponse`) e lo stesso
+  `AiOutputValidator`. `TextModelProviderContractTest` verifica che i due client diano lo stesso
+  risultato dallo stesso testo del modello;
+- la copertina locale è una strategia, `CoverImageGenerator`, con due implementazioni
+  (`DeterministicCoverGenerator`, `ComfyUiCoverGenerator`), scelte da `LOCAL_COVER_PROVIDER` nel
+  composition root;
+- `LocalPdfOcrAdapter` restituisce la stessa forma di risultato di `TextractOcrAdapter`, righe con
+  confidenza comprese.
+
 ## Verifica della Dependency Rule
 
 `scripts/ci/check-dependency-rule.sh` gira nel job `backend` della CI e in `make verify-backend`.
@@ -88,7 +116,7 @@ Solo pattern con un collaboratore reale dietro.
 | Pattern | Dove | Problema che risolve lì | Senza |
 | --- | --- | --- | --- |
 | **Adapter** | `EloquentDocumentRepository`, `BedrockDocumentAiAdapter`, `TextractOcrAdapter`, `SfnWorkflowEngineAdapter` e gli equivalenti di Communications | Il caso d'uso parla con `DocumentRepository`, non con `SubDocument::query()`: il dominio non conosce Eloquent né l'SDK AWS. | Il dominio dipende da Eloquent e AWS, e i test di dominio richiedono Laravel e LocalStack. |
-| **Strategy** | `WorkflowTaskHandler`, scelto da `WorkflowTaskRegistry::for($taskType)` | `WorkflowTaskRunner` resta uguale per tutti i domini (dedup, claim, audit, metriche); cambia solo il passo di business. | Il runner avrebbe un `match` sul dominio e conoscerebbe Documents e Communications. |
+| **Strategy** | `WorkflowTaskHandler`, scelto da `WorkflowTaskRegistry::for($taskType)`; `CoverImageGenerator` nel profilo locale | `WorkflowTaskRunner` resta uguale per tutti i domini (dedup, claim, audit, metriche); cambia solo il passo di business. L'adapter locale delle comunicazioni non sa quale generatore di copertina usa. | Il runner avrebbe un `match` sul dominio e conoscerebbe Documents e Communications. |
 | **Factory Method** | `WorkflowTaskRegistry::for()` | La selezione dell'handler a runtime sta in un punto solo. | Ogni punto di invocazione sceglierebbe l'handler da sé. |
 | **Facade** | I servizi applicativi (`UploadDocumentService`, `GenerateCommunicationService`, ...) | L'adapter primario chiama un metodo e non sa quanti collaboratori servono (repository, gateway AI, storage, regole). | Il controller orchestrerebbe 4-5 servizi, com'era prima del refactor. |
 | **Observer** | Eventi di dominio, 14 in Documents e 21 in Communications, pubblicati tramite le porte `*EventDispatcherPort`, ognuno con il proprio listener | Audit e metriche reagiscono agli eventi invece di essere chiamati da ogni caso d'uso. La coppia audit+metrica della copertina degradata, prima duplicata in due punti, ora sta in un listener. | Ogni nuova reazione richiede di toccare tutti i casi d'uso che generano l'evento. |

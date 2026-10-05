@@ -45,6 +45,11 @@ flowchart LR
     s3real[("S3 reale")]
   end
 
+  subgraph host["Host, profilo local (fork)"]
+    ollama["Ollama<br/>modello testuale"]
+    comfy["ComfyUI<br/>opzionale"]
+  end
+
   subgraph obs["Osservabilità"]
     otel["OTel Collector"]
     prom["Prometheus"]
@@ -76,6 +81,9 @@ flowchart LR
   wdoc -->|OCR| textract
   wdoc -->|split ed estrazione| bedrock
   wcom -->|testo e copertina| bedrock
+  wdoc -.->|profilo local: split ed estrazione| ollama
+  wcom -.->|profilo local: testo| ollama
+  wcom -.->|profilo local, comfyui| comfy
   wdoc -.->|con MVP_DOCUMENT_DISK=real_s3| s3real
   textract -.-> s3real
   traefik -->|dashboard per hostname| graf
@@ -88,8 +96,10 @@ flowchart LR
   alloy -->|log dei container etichettati| loki
 ```
 
-Le linee tratteggiate sono percorsi condizionali. Il worker ricava la configurazione allo stesso modo
-di `app`; Traefik instrada per hostname anche Prometheus e Alertmanager, dietro basic auth. I
+Le linee tratteggiate sono percorsi condizionali. Nel profilo `standard` (default) i worker usano
+Bedrock e Textract; nel profilo `local`, un'estensione del fork, usano Ollama e ComfyUI sull'host, e
+l'OCR gira dentro il worker con `pdftotext` e Tesseract. Il worker ricava la configurazione allo
+stesso modo di `app`; Traefik instrada per hostname anche Prometheus e Alertmanager, dietro basic auth. I
 sorgenti draw.io in [`diagrams/`](diagrams/) precedono la revisione del fork e mostrano ancora
 flussi rimossi, come le trace verso Tempo: vanno rifatti e non sono più incorporati nei documenti.
 
@@ -102,8 +112,8 @@ flussi rimossi, come le trace verso Tempo: vanno rifatti e non sono più incorpo
 | API | API JSON Laravel in `app/Http` | Validazione, controlli di tenant, audit event, avvio del workflow. |
 | Workflow | Due state machine Step Functions e due code SQS con DLQ (LocalStack) | Orchestrazione con callback a task token, heartbeat e retry; pipeline documentale e pipeline delle comunicazioni isolate fra loro. |
 | Worker | `php artisan mvp:workflow:consume --queue=documents|communications` | Un worker per pipeline: ricezione SQS, esecuzione dei task, `SendTaskSuccess`/`SendTaskFailure`, `SendTaskHeartbeat`. |
-| OCR | `App\Mvp\Documents\Adapters\Outbound\Ocr\TextractOcrAdapter` | Integrazione Textract reale, disabilitata di default nelle esecuzioni locali/CI standard. |
-| AI | `App\Mvp\Ai\BedrockService` | Integrazione Bedrock reale per split/estrazione, generazione del testo e delle copertine. |
+| OCR | `TextractOcrAdapter`; nel profilo local `LocalPdfOcrAdapter` | Textract reale, disabilitato di default nel profilo standard; nel profilo local text layer o Tesseract, senza servizi esterni. |
+| AI | `BedrockService`; nel profilo local `OllamaService` e `CoverImageGenerator` | Bedrock reale per split ed estrazione, testo e copertine; nel profilo local un modello su Ollama e una copertina deterministica o da ComfyUI. |
 | Storage | Dischi Laravel `s3` o `real_s3`, bucket `frontend_static` | S3 LocalStack per documenti, copertine delle comunicazioni e asset Angular, S3 reale opzionale solo per documenti/Textract. |
 | Persistenza | PostgreSQL | Comunicazioni, documenti, sotto-documenti, dati estratti, audit e stato dei task di workflow. |
 | Cache/sessione | Redis | Cache/sessione e rate limiting; non è la fonte di verità dei dati. |
@@ -155,6 +165,15 @@ Le variabili `FRONTEND_STATIC_BUCKET` e `EDGE_CDN_LOCAL_URL` sono locali e dedic
 alla SPA: non devono puntare a bucket reali e non governano il caricamento documenti.
 
 I test e la CI standard non chiamano S3, Textract o Bedrock reali.
+
+### Profilo di esecuzione locale
+
+Estensione del fork, non parte dell'MVP ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)).
+`MVP_EXECUTION_PROFILE=local` lega alle stesse porte adapter locali: `OllamaDocumentAiAdapter`,
+`LocalCommunicationAiAdapter` e `LocalPdfOcrAdapter`. Lo fa solo il composition root:
+workflow, code, persistenza, SSE e contratto HTTP restano identici, e il profilo `standard` resta
+il default. Come attivarlo è descritto in
+[`../runbooks/local-development.md`](../runbooks/local-development.md#profilo-di-esecuzione-locale).
 
 ## Percorso verso AWS reale
 

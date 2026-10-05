@@ -235,7 +235,10 @@ nuovo appartiene o no a quella pagina.
   che scorre), **Saturation** (DLQ, task in attesa, bloccati oltre timeout), **Errors** (messaggi
   falliti, heartbeat, callback rifiutati). È il complemento del metodo RED usato per l'API.
 - `ai-ocr-quality.json` — qualità di Textract (confidenza e durata sulla finestra selezionata,
-  esiti, fallimenti per codice) ed esito dell'estrazione AI. Lo stato delle comunicazioni è stato
+  esiti, fallimenti per codice) ed esito dell'estrazione AI. La sezione "OCR locale" copre il
+  profilo di esecuzione locale ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)):
+  pagine lette per metodo (`text_layer` o `tesseract`), durata media e fallimenti
+  (`mvp_local_ocr_*`). Lo stato delle comunicazioni è stato
   spostato nella dashboard delle comunicazioni, a cui appartiene.
 - `logs-and-errors.json` — *triage temporale senza perdere il dettaglio*. Prima fascia: errori negli
   ultimi 5 minuti (finestra fissa) accanto al totale del periodo selezionato, servizio più rumoroso e

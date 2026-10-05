@@ -67,8 +67,9 @@ sequenceDiagram
 | `SQS_DLQ_URL` | Diagnostica della DLQ | Usata da `mvp:dlq:list --queue=documents` e dal probe delle DLQ. |
 | `MVP_DOCUMENT_DISK` | Storage degli upload | `s3` per LocalStack, `real_s3` per Textract reale. |
 | `AWS_REAL_*` | S3 e Textract reali | Mai nel repository. |
-| `TEXTRACT_ENABLED` | OCR | `false` di default in locale e in CI. Richiede `MVP_DOCUMENT_DISK=real_s3`. |
+| `TEXTRACT_ENABLED` | OCR | `false` di default in locale e in CI. Richiede `MVP_DOCUMENT_DISK=real_s3`. Ignorata nel profilo local. |
 | `BEDROCK_MODEL_ID` | Estrazione AI | L'accesso al modello va abilitato nell'account AWS. |
+| `MVP_EXECUTION_PROFILE` | Provider di OCR e AI | `local` sostituisce Textract e Bedrock con l'OCR locale e Ollama, senza cambiare il flusso ([`local-development.md`](local-development.md#profilo-di-esecuzione-locale)). |
 
 Con `TEXTRACT_ENABLED=true`, `MVP_DOCUMENT_DISK` deve valere `real_s3`: Textract reale legge solo
 oggetti su S3 reale, quindi `StartDocumentWorkflowService::start()` rifiuta subito il workflow, con
