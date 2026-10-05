@@ -71,18 +71,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Configure AWS credentials through OIDC
         if: needs.preflight.outputs.mode == 'oidc'
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
         with:
           role-to-assume: ${{ inputs.aws_role_arn }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure AWS credentials from ephemeral secrets
         if: needs.preflight.outputs.mode == 'keys'
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
         with:
           aws-access-key-id: ${{ secrets.AWS_REAL_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_REAL_SECRET_ACCESS_KEY }}

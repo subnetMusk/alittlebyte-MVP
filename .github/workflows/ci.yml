@@ -45,11 +45,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload backend coverage data
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: backend-coverage
           path: coverage/cobertura.xml
@@ -150,7 +150,7 @@ jobs:
 
       - name: Upload backend coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: backend-coverage-report
           path: coverage/html
@@ -177,11 +177,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -197,7 +197,7 @@ jobs:
         run: docker compose --profile tools run --rm node npm ci --ignore-scripts
 
       - name: Lint OpenAPI contract
-        run: docker compose --profile tools run --rm node npx --yes @redocly/cli@latest lint openapi/v1/alittlebyte-mvp-api.yaml
+        run: docker compose --profile tools run --rm node npx --yes @redocly/cli@2.57.0 lint openapi/v1/alittlebyte-mvp-api.yaml
 
       - name: Generate OpenAPI client
         run: docker compose --profile tools run --rm node npm run openapi:generate
@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload frontend coverage data
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-coverage
           path: |
@@ -230,7 +230,7 @@ jobs:
 
       - name: Upload frontend coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-coverage-report
           path: apps/frontend/coverage/lcov-report
@@ -250,18 +250,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
       - name: Download backend coverage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: backend-coverage
           path: coverage/backend
 
       - name: Download frontend coverage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: frontend-coverage
           path: coverage/frontend
@@ -341,7 +341,7 @@ jobs:
 
       - name: Upload changed-line coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: changed-line-coverage
           path: |
@@ -364,7 +364,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # I runner ubuntu-latest hanno ~14 GB liberi su /: insufficienti per
       # caricare tutte le immagini esterne + buildare le immagini di produzione
@@ -384,7 +384,7 @@ jobs:
 
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -402,7 +402,7 @@ jobs:
 
       - name: Restore image cache
         id: image-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: /tmp/ci-images.tar.zst
           key: docker-images-${{ steps.images.outputs.key }}
@@ -434,7 +434,7 @@ jobs:
           steps.image-cache.outputs.cache-hit != 'true' &&
           github.event_name == 'push' &&
           (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: /tmp/ci-images.tar.zst
           key: docker-images-${{ steps.images.outputs.key }}
@@ -618,7 +618,7 @@ jobs:
 
       - name: Upload stack diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stack-diagnostics
           path: artifacts/stack-diagnostics
@@ -634,7 +634,7 @@ jobs:
 
       - name: Login to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -643,7 +643,7 @@ jobs:
       - name: Docker metadata (app)
         if: github.event_name != 'pull_request'
         id: meta-app
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/mvp-app
           tags: |
@@ -654,7 +654,7 @@ jobs:
       - name: Docker metadata (nginx)
         if: github.event_name != 'pull_request'
         id: meta-nginx
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/mvp-nginx
           tags: |

@@ -183,7 +183,7 @@ openapi-generate: node-install
 	$(NODE) npm run openapi:generate
 
 openapi-validate: node-install
-	$(NODE) npx --yes @redocly/cli@latest lint openapi/v1/alittlebyte-mvp-api.yaml
+	$(NODE) npx --yes @redocly/cli@2.57.0 lint openapi/v1/alittlebyte-mvp-api.yaml
 
 # Alloy v1.5 non ha un comando validate: alloy fmt --test analizza la sintassi
 # e fallisce anche su un file non formattato in modo canonico.
