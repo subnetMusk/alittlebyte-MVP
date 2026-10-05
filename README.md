@@ -13,7 +13,7 @@
 </p>
 
 
-MVP per workflow HR e documentali assistiti da AI, con generazione di comunicazioni, pipeline asincrona di elaborazione PDF, integrazione AWS-like locale e osservabilità end-to-end.
+MVP per workflow HR e documentali assistiti da AI, con generazione di comunicazioni, pipeline asincrona di elaborazione PDF, integrazione AWS-like locale, metriche, alert e log centralizzati.
 
 
 ## Contesto
@@ -36,7 +36,7 @@ La MVP dimostra un modello applicativo composto da più livelli cooperanti:
 * **LocalStack** per emulare localmente servizi AWS come SQS, Step Functions, SSM, Secrets Manager e S3;
 * **emulatore CDN locale** (Nginx) davanti al bucket S3 LocalStack per il serving della SPA Angular (in produzione: AWS CloudFront);
 * integrazione AI tramite astrazione verso **Bedrock** e integrazione OCR tramite **Textract** (attivabile, disabilitata di default);
-* stack di osservabilità con **OpenTelemetry, Prometheus, Grafana, Tempo, Loki, Alloy e Alertmanager**;
+* stack di osservabilità con **OpenTelemetry Collector (gateway delle metriche), Prometheus, Grafana, Loki, Alloy e Alertmanager**;
 * CI con test backend/frontend, scansione immagini, validazione infrastrutturale e audit accessibilità.
 
 La separazione tra richiesta HTTP e workflow asincrono è uno dei punti centrali: l’utente avvia l’elaborazione, il backend registra lo stato e il worker si occupa dei task più lunghi tramite una pipeline orchestrata.
@@ -87,7 +87,7 @@ Sui sotto-documenti prodotti l’operatore lavora in revisione human-in-the-loop
 
 La MVP integra un layer di osservabilità locale per seguire il comportamento dell’applicazione e della pipeline documentale.
 
-Le metriche applicative e infrastrutturali vengono raccolte tramite OpenTelemetry Collector e Prometheus. Le trace vengono inviate a Tempo, i log sono centralizzati su Loki tramite Alloy, mentre Grafana fornisce dashboard per API, workflow documentale, qualità AI/OCR, code, DLQ, log ed errori. Alertmanager completa il flusso operativo con regole collegate a runbook dedicati.
+Le metriche applicative e infrastrutturali vengono raccolte dall'OpenTelemetry Collector ed esposte a Prometheus. I log dei container sono centralizzati su Loki tramite Alloy, mentre Grafana fornisce dashboard per API, workflow documentale, qualità AI/OCR, code, DLQ, log ed errori. Alertmanager completa il flusso operativo con regole collegate a runbook dedicati.
 
 Questa impostazione rende visibili latency, traffico, errori, saturazione, stato dei worker, andamento della pipeline e qualità delle elaborazioni AI.
 
@@ -148,7 +148,6 @@ Il bucket `FRONTEND_STATIC_BUCKET` è dedicato solo alla SPA. I documenti contin
 | Grafana      | `https://grafana.localhost:8443`      |
 | Prometheus   | `https://prometheus.localhost:8443`   |
 | Alertmanager | `https://alertmanager.localhost:8443` |
-| Tempo        | `https://tempo.localhost:8443`        |
 | LocalStack   | `http://127.0.0.1:4566`               |
 
 I comandi disponibili sono raccolti nel `Makefile`, che funge da interfaccia operativa per setup, avvio, test, log, reset e controlli locali.

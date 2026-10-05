@@ -121,11 +121,11 @@ Incluso:
 - audit trail append-only per azioni rilevanti, incluse valutazione della bozza e scaricamento del
   messaggio di invio;
 - metriche HTTP golden-signal e di dominio in formato Prometheus;
-- OpenTelemetry Collector come unico gateway locale (metriche verso Prometheus, trace verso Tempo);
+- OpenTelemetry Collector come unico gateway locale delle metriche verso Prometheus;
 - raccolta log dei container via Grafana Alloy verso Loki;
 - 6 dashboard Grafana provisionate (`api-golden-signals`, `document-pipeline`,
   `communication-pipeline`, `ai-ocr-quality`, `queues-and-dlq`, `logs-and-errors`);
-- 15 alert rule Prometheus su error ratio, latenza, readiness, stato worker, code/DLQ per dominio,
+- 16 alert rule Prometheus su error ratio, latenza, readiness, stato worker, code/DLQ per dominio,
   esecuzioni Step Functions, generazioni bloccate e degrado delle copertine, collegate a runbook
   dedicati;
 - contract OpenAPI 3.1 come fonte del client frontend, verificato in CI;

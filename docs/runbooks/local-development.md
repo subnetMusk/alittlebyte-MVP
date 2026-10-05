@@ -13,7 +13,7 @@ Il target esegue:
 - avvio di PostgreSQL, Redis e LocalStack;
 - `terraform init` e `terraform apply` dal container Compose `terraform`;
 - migrazioni applicative;
-- avvio di app, Nginx, worker SQS, Traefik, OTel Collector, Prometheus, Tempo, Alertmanager, Grafana, Loki e Grafana Alloy.
+- avvio di app, Nginx, worker SQS, Traefik, OTel Collector, Prometheus, Alertmanager, Grafana, Loki e Grafana Alloy.
 
 ![Ambiente locale e provisioning](../architecture/diagrams/02_ambiente_locale_provisioning.drawio.png)
 
@@ -27,7 +27,6 @@ Endpoint:
 - Grafana: https://grafana.localhost:8443 (login Grafana)
 - Prometheus: https://prometheus.localhost:8443 (basic auth `mvp` / `mvp-obs-local-password`)
 - Alertmanager: https://alertmanager.localhost:8443 (basic auth)
-- Tempo: https://tempo.localhost:8443 (basic auth)
 - LocalStack edge: http://localhost:4566 (bind solo 127.0.0.1)
 
 Le dashboard non espongono porte sull'host: si passa sempre da Traefik

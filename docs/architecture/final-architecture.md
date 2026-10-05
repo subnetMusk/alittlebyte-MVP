@@ -34,7 +34,7 @@ export PNG/SVG vanno rigenerati da draw.io dopo ogni modifica (`drawio -x -f png
 | Storage | Dischi Laravel `s3` o `real_s3`, bucket `frontend_static` | S3 LocalStack per documenti, copertine delle comunicazioni e asset Angular, S3 reale opzionale solo per documenti/Textract. |
 | Persistenza | PostgreSQL | Comunicazioni, documenti, sotto-documenti, dati estratti, audit e stato dei task di workflow. |
 | Cache/sessione | Redis | Cache/sessione e rate limiting; non è la fonte di verità dei dati. |
-| Osservabilità | OTel Collector, Prometheus, Tempo, Grafana, Alertmanager | Metriche, trace, dashboard e alert locali. |
+| Osservabilità | OTel Collector, Prometheus, Grafana, Alertmanager | Metriche, dashboard e alert locali. |
 | Log | Grafana Alloy, Loki | Raccolta e archiviazione dei log dei container, interrogabili in Grafana. |
 
 ## LocalStack e AWS reale
@@ -98,8 +98,8 @@ I test e la CI standard non chiamano S3, Textract o Bedrock reali.
 | AWS Well-Architected: security | Nessuna UI di amministrazione runtime, nessun segreto reale committato, header di sicurezza e CSP in nginx, matrice IAM a privilegio minimo documentata. |
 | Baseline OWASP ASVS/API | Validazione upload server-side, controlli di ownership per tenant, rate limit, confine di autenticazione strutturato. |
 | Google SRE: monitoring | Metriche API golden-signal, metriche di entrambe le pipeline, alert code/DLQ per dominio con runbook. |
-| Modello OpenTelemetry | Il Collector riceve OTLP ed esporta metriche verso Prometheus e trace verso Tempo. |
-| Logging centralizzato | Grafana Alloy invia i log di ogni container a Loki, correlati in Grafana con metriche e trace. |
+| Modello OpenTelemetry | Il Collector è il gateway delle metriche: raschia l'exporter applicativo e Traefik e le espone a Prometheus. Il tracing distribuito non è implementato. |
+| Logging centralizzato | Grafana Alloy invia a Loki i log dei container etichettati per la raccolta, interrogabili in Grafana accanto alle metriche. |
 
 ## Riferimenti principali
 

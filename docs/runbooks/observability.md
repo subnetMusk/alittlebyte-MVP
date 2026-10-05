@@ -1,69 +1,116 @@
-# Observability Runbook
+# Runbook di osservabilità
 
-## Local Services
+Lo stack locale copre metriche, alert e log centralizzati. Non c'è tracing distribuito:
+l'applicazione non include un SDK OpenTelemetry, quindi nessun componente produce trace.
 
-| Service | URL | Purpose |
+## Servizi locali
+
+| Servizio | Accesso | Ruolo |
 | --- | --- | --- |
-| Prometheus | https://prometheus.localhost:8443 (basic auth) | Metrics store and alert rule evaluation. |
-| Alertmanager | https://alertmanager.localhost:8443 (basic auth) | Local/demo alert routing. |
-| Grafana | https://grafana.localhost:8443 (Grafana login) | Provisioned dashboards, logs and traces. |
-| Tempo | https://tempo.localhost:8443 (basic auth) | Trace storage queried by Grafana. |
-| OTel Collector | internal `otel-collector:4317/4318` | OTLP ingest and Prometheus scraping. |
-| Loki | internal `loki:3100` | Log storage queried by Grafana. |
-| Grafana Alloy | internal `alloy:12345` | Collects container logs and ships them to Loki. |
+| Prometheus | https://prometheus.localhost:8443 (basic auth) | Archivio delle metriche e valutazione delle regole di alert. |
+| Alertmanager | https://alertmanager.localhost:8443 (basic auth) | Instradamento degli alert verso un receiver dimostrativo. |
+| Grafana | https://grafana.localhost:8443 (login di Grafana) | Dashboard provisionate da file, metriche e log. |
+| OTel Collector | interno, `otel-collector:9464` | Gateway delle metriche: raschia app, Traefik e se stesso, espone a Prometheus. |
+| Loki | interno, `loki:3100` | Archivio dei log interrogato da Grafana. |
+| Grafana Alloy | interno, `alloy:12345` | Raccoglie i log dei container etichettati e li invia a Loki. |
 
-No host ports: the UIs are reachable only through Traefik on the internal
-`observability` network. Default basic auth credentials live in
-`docker/traefik/usersfile` (`mvp` / `mvp-obs-local-password`, local only).
-Browsers resolve `*.localhost` natively; for `curl` add
-`--resolve prometheus.localhost:8443:127.0.0.1` (or `/etc/hosts` entries).
+Nessuna porta sull'host: le UI sono raggiungibili solo da Traefik, sulla rete interna
+`observability`. Le credenziali di basic auth sono in `docker/traefik/usersfile` (`mvp` /
+`mvp-obs-local-password`, solo per l'ambiente locale); quelle di Grafana vengono da
+`GRAFANA_ADMIN_USER` e `GRAFANA_ADMIN_PASSWORD` (default `admin` / `admin`). I browser risolvono
+`*.localhost` da soli; con `curl` serve `--resolve prometheus.localhost:8443:127.0.0.1`.
 
-![Flusso di osservabilità](../architecture/diagrams/07_osservabilita.drawio.png)
+Prometheus, Alertmanager, Grafana e Loki hanno un healthcheck HTTP nel compose. Alloy e il Collector
+no: le loro immagini non contengono un client HTTP, e il Collector non ha nemmeno una shell.
 
-<sub>Sorgente editabile: [`07_osservabilita.drawio`](../architecture/diagrams/07_osservabilita.drawio), export [`SVG`](../architecture/diagrams/07_osservabilita.drawio.svg).</sub>
-
-## Start and Validate
+## Avvio e validazione
 
 ```bash
 make observability-config
 make observability-up
 ```
 
-`make observability-config` validates:
+`make observability-config` valida, senza avviare lo stack:
 
-- OTel Collector configuration;
-- Prometheus configuration and rule files.
+- la configurazione del Collector (`otelcol-contrib validate`);
+- la configurazione di Prometheus e i file di regole (`promtool check config`);
+- la configurazione di Alertmanager (`amtool check-config`);
+- la configurazione di Loki (`loki -verify-config`);
+- la configurazione di Alloy (`alloy fmt --test`, che fallisce anche su un file non formattato in
+  modo canonico).
 
-## Metrics and Traces Flow
+La CI esegue lo stesso target nel job `stack` e, a stack avviato, verifica che Loki riceva log con le
+label `service` e `project`.
 
-1. Laravel exposes `/internal/metrics` through a dedicated Nginx listener on `:8081`, not through the Traefik-facing listener on `:8080`.
-2. The `app`, `queue` and `queue-communications` containers share the `observability-metrics` volume, so domain metrics recorded by the worker (Textract, SQS, workflow completion) are exposed by the same `/internal/metrics` endpoint.
-3. OTel Collector scrapes Nginx, Traefik and itself.
-4. OTel Collector exports metrics on `:9464`.
-5. Prometheus scrapes the Collector exporter and evaluates alert rules.
-6. Alertmanager receives alerts from Prometheus.
-7. Tempo receives traces from the OTel Collector.
-8. Grafana provisions Prometheus, Tempo and Loki datasources from file.
+## Flusso delle metriche
 
-## Logs Flow
+1. Laravel espone `/internal/metrics` su un listener Nginx dedicato, `:8081`, distinto da quello
+   raggiunto da Traefik (`:8080`). Da fuori, `https://localhost:8443/internal/metrics` risponde 404.
+2. `app`, `queue` e `queue-communications` condividono il volume `observability-metrics`: le metriche
+   di dominio registrate dai worker (Textract, SQS, completamento dei workflow) escono dallo stesso
+   endpoint.
+3. Il Collector raschia `nginx:8081/internal/metrics`, `traefik:9100/metrics` e la propria telemetria
+   (`:8888`).
+4. Il Collector espone tutte le metriche su `:9464`.
+5. Prometheus raschia solo il Collector e valuta le regole di alert.
+6. Alertmanager riceve gli alert da Prometheus.
+7. Grafana interroga Prometheus e Loki, provisionati da `docker/grafana/provisioning`.
 
-1. Grafana Alloy discovers the project's containers through the Docker socket (`com.docker.compose.project=mvp`).
-2. Alloy reads each container's log stream and ships it to Loki, labelling lines with `service`, `container` and `project`.
-3. Application logs sent over OTLP reach the OTel Collector, which forwards them to Loki's native OTLP ingestion endpoint (`loki:3100/otlp`).
-4. Loki stores logs on a local filesystem volume with a 7-day retention.
-5. Grafana queries Loki for the logs panels and the `Logs and Errors` dashboard.
+**Limite dell'exporter.** Le metriche applicative stanno in un file JSON
+(`storage/app/private/observability/metrics.json`) condiviso dai tre container. Ogni scrittura prende
+un `flock` esclusivo e riscrive l'intero file; la lettura per lo scrape usa un lock condiviso. Basta
+per il carico di un ambiente locale, ma serializza le richieste sotto carico. Se il file risulta
+corrotto, `MetricsRecorder` riparte da un insieme vuoto e i contatori si azzerano: Prometheus lo
+vede come un reset di counter, che `rate()` gestisce.
 
-Useful LogQL queries:
+**Correlation ID.** `CorrelateRequests` legge `X-Correlation-ID` (o `X-Request-ID`, o ne genera uno),
+lo mette nel contesto dei log e lo restituisce nella risposta. All'avvio di un workflow entra
+nell'input della state machine come `correlation_id`, l'ASL lo copia nei messaggi SQS e il worker lo
+rilega al contesto prima di eseguire il task; gli audit lo registrano. È un identificativo di
+correlazione dei log, non un contesto W3C Trace Context.
+
+## Flusso dei log
+
+1. I servizi da raccogliere dichiarano la label `com.alittlebyte.observability.logs: "true"`,
+   definita una volta sola come `x-collected-logs` in `docker-compose.yml`. Ce l'hanno tutti i servizi
+   di runtime; i tool del profilo `tools` (Node, Terraform, AWS CLI, audit) no.
+2. Alloy scopre i container dal socket Docker filtrando su quella label, non sul nome del progetto
+   Compose (`docker/alloy/config.alloy`).
+3. Alloy legge il flusso di log di ogni container e lo invia a Loki con le label `service`,
+   `container` e `project` (il progetto Compose del checkout).
+4. Loki conserva i log su un volume locale per 7 giorni.
+5. Grafana interroga Loki nei pannelli di log e nella dashboard `Logs and Errors`. Le dashboard hanno
+   una variabile `project` popolata dai valori della label: `All` mostra tutti i checkout.
+
+Per aggiungere un servizio alla raccolta basta dargli `labels: *collected-logs`.
+
+**Nome del progetto e più checkout.** Il nome del progetto Compose non è fissato nel compose: deriva
+dalla cartella, oppure da `-p` o `COMPOSE_PROJECT_NAME`. Così due checkout dello stesso repository
+non condividono container, reti e volumi. Il demone Docker però è uno solo: con due stack accesi, ogni
+Alloy vede anche i container etichettati dell'altro e li invia al proprio Loki. Ogni riga resta
+attribuita al checkout di origine dalla label `project`, che le dashboard permettono di filtrare. Un
+isolamento stretto dell'ingestione (ogni Loki riceve solo il proprio stack) non è configurato.
+
+Query LogQL utili (`<progetto>` è il nome del progetto Compose, di default la cartella in minuscolo):
 
 ```logql
-{project="mvp", service="queue"}
-{project="mvp", service=~"queue|queue-communications|app"} |~ "(?i)level_name.{0,6}(error|critical|emergency)"
-{project="mvp"} |~ "(?i)(level_name.{0,6}(error|critical|emergency)|level=(error|critical|fatal))" != "No such container"
+{project="<progetto>", service="queue"}
+{project="<progetto>", service=~"queue|queue-communications|app"} |~ "(?i)level_name.{0,6}(error|critical|emergency)"
+{project=~".+"} |~ "(?i)(level_name.{0,6}(error|critical|emergency)|level=(error|critical|fatal))" != "No such container"
 ```
 
-Monolog application logs are JSON with `level_name`; infrastructure containers use logfmt with `level=`. The error filters above match both. The `!= "No such container"` clause drops Alloy's transient errors emitted while containers are being recreated.
+I log applicativi di Monolog sono JSON con `level_name`; i container di infrastruttura usano logfmt
+con `level=`. I filtri sugli errori coprono entrambi. La clausola `!= "No such container"` scarta gli
+errori transitori di Alloy mentre i container vengono ricreati.
 
-## Metric contract
+Verifica a stack avviato:
+
+```bash
+curl -sk --resolve grafana.localhost:8443:127.0.0.1 -u admin:admin https://grafana.localhost:8443/api/datasources/proxy/uid/loki/loki/api/v1/labels
+curl -sk --resolve grafana.localhost:8443:127.0.0.1 -u admin:admin https://grafana.localhost:8443/api/datasources/proxy/uid/loki/loki/api/v1/label/project/values
+```
+
+## Contratto delle metriche
 
 Le metriche di dominio sono **dichiarate** in `app/Mvp/Observability/DomainMetricCatalog.php`, non
 dedotte da ciò che il file di accumulo contiene. Il catalogo definisce nome, tipo, help, label e —
@@ -166,7 +213,7 @@ la sua famiglia sparisce ma il resto dell'esposizione continua a essere servito,
 
 ## Dashboards
 
-Dashboard JSON lives in `docker/grafana/dashboards`:
+Le dashboard sono JSON in `docker/grafana/dashboards`.
 
 Ogni dashboard apre con un pannello di testo che dichiara la domanda a cui risponde e gli alert
 correlati, e ogni pannello porta una `description` visibile sull'icona informativa: sono le due
@@ -196,11 +243,11 @@ nuovo appartiene o no a quella pagina.
   Seguono il confronto fra servizi a piena larghezza, le righe complete e un pannello per ciascuno dei
   tre servizi. Apre su `now-1h`, più corta delle altre perché è la scala giusta per i log.
 
-Datasource provisioning (Prometheus, Tempo, Loki) lives in `docker/grafana/provisioning`.
+I datasource (Prometheus e Loki) sono provisionati da `docker/grafana/provisioning`.
 
-## Alert Rules
+## Regole di alert
 
-Rules live in `docker/prometheus/rules`:
+Le 16 regole stanno in `docker/prometheus/rules`:
 
 - `api-alerts.yml`
 - `pipeline-alerts.yml`
@@ -208,6 +255,6 @@ Rules live in `docker/prometheus/rules`:
 - `communication-alerts.yml`
 - `ai-alerts.yml`
 
-Every alert carries a `runbook` annotation linking to the relevant runbook in `docs/runbooks/`. The DLQ alerts (`DLQNotEmpty`, `CommunicationDLQNotEmpty`) and `CommunicationCoverStorageFailing` are `critical` (terminal failure paths); the remaining alerts are `warning` except `TargetDown` (`critical`). `CommunicationCoverGenerationDegraded` fires above three degradations in thirty minutes: a degraded cover is an expected outcome and a single event is not actionable.
+Ogni alert ha un'annotazione `runbook` che punta al runbook pertinente in `docs/runbooks/` su GitHub. Gli alert sulle DLQ (`DLQNotEmpty`, `CommunicationDLQNotEmpty`) e `CommunicationCoverStorageFailing` sono `critical`, perché segnalano percorsi di fallimento terminali; gli altri sono `warning`, tranne `TargetDown` (`critical`). `CommunicationCoverGenerationDegraded` scatta oltre tre degradazioni in trenta minuti: una copertina degradata è un esito previsto e un singolo evento non richiede un intervento.
 
-The local Alertmanager receiver is intentionally a demo receiver. Do not configure real email, Slack or paging secrets in this repository.
+Il receiver di Alertmanager è volutamente dimostrativo: gli alert si consultano nella UI di Alertmanager. Non vanno configurati in questo repository segreti reali di email, Slack o paging.
