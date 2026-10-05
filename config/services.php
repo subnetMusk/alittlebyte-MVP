@@ -105,13 +105,13 @@ return [
             'base_url' => env('COMFYUI_BASE_URL', 'http://host.docker.internal:8188'),
             // Workflow in formato API, modelli compresi: un nome di file indica
             // uno di quelli versionati in resources/ai/comfyui, un percorso un
-            // file qualsiasi dell'immagine. Il predefinito usa Z-Image-Turbo in
-            // GGUF.
+            // file qualsiasi dell'immagine. Il predefinito usa SDXL Lightning;
+            // Z-Image-Turbo in GGUF richiede molta piu' memoria.
             'workflow' => str_contains((string) env('COMFYUI_WORKFLOW', ''), '/')
                 ? env('COMFYUI_WORKFLOW')
-                : resource_path('ai/comfyui/'.(env('COMFYUI_WORKFLOW') ?: 'z-image-turbo.json')),
-            // Con il workflow versionato un'immagine 1024x1024 ha richiesto circa
-            // tre minuti su una GPU da 8 GB. Il limite resta sotto il timeout
+                : resource_path('ai/comfyui/'.(env('COMFYUI_WORKFLOW') ?: 'sdxl-lightning.json')),
+            // Su una GPU da 8 GB SDXL Lightning resta sotto i 20 secondi,
+            // Z-Image-Turbo richiede minuti. Il limite resta sotto il timeout
             // del task GenerateCover dell'ASL (300 s, con un retry su timeout),
             // lasciando margine per salvare la copertina e chiudere il task.
             'timeout_seconds' => 270,

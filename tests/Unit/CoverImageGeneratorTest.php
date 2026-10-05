@@ -15,7 +15,7 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
-function versionedComfyUiWorkflow(string $name = 'z-image-turbo.json'): string
+function versionedComfyUiWorkflow(string $name = 'sdxl-lightning.json'): string
 {
     return resource_path("ai/comfyui/{$name}");
 }
@@ -171,9 +171,9 @@ test('COMFYUI_WORKFLOW selects a versioned workflow by name or any file by path'
 
     expect($workflow)->toBe(str_starts_with($expected, '/') ? $expected : resource_path("ai/comfyui/{$expected}"));
 })->with([
-    'non impostato' => [null, 'z-image-turbo.json'],
-    'vuoto' => ['', 'z-image-turbo.json'],
-    'nome versionato' => ['sdxl-lightning.json', 'sdxl-lightning.json'],
+    'non impostato' => [null, 'sdxl-lightning.json'],
+    'vuoto' => ['', 'sdxl-lightning.json'],
+    'nome versionato' => ['z-image-turbo.json', 'z-image-turbo.json'],
     'percorso' => ['/srv/comfyui/custom.json', '/srv/comfyui/custom.json'],
 ]);
 
@@ -181,7 +181,7 @@ test('ComfyUI uses the same seed for the same request', function () {
     $seeds = [];
     Http::fake(function (Request $request) use (&$seeds) {
         if (str_ends_with($request->url(), '/prompt')) {
-            $seeds[] = $request['prompt']['57:3']['inputs']['seed'];
+            $seeds[] = $request['prompt']['7']['inputs']['seed'];
         }
 
         return Http::response(['prompt_id' => '']);
