@@ -98,10 +98,14 @@ return [
         'provider' => env('LOCAL_COVER_PROVIDER', 'mock'),
         'comfyui' => [
             'base_url' => env('COMFYUI_BASE_URL', 'http://host.docker.internal:8188'),
-            'checkpoint' => env('COMFYUI_CHECKPOINT', ''),
-            'workflow' => env('COMFYUI_WORKFLOW') ?: resource_path('ai/comfyui/cover-workflow.json'),
-            // Sotto il timeout del task GenerateCover dell'ASL (300 s).
-            'timeout_seconds' => 240,
+            // Workflow in formato API, modelli compresi; quello versionato usa
+            // Z-Image-Turbo in GGUF.
+            'workflow' => env('COMFYUI_WORKFLOW') ?: resource_path('ai/comfyui/z-image-turbo.json'),
+            // Con il workflow versionato un'immagine 1024x1024 ha richiesto circa
+            // tre minuti su una GPU da 8 GB. Il limite resta sotto il timeout
+            // del task GenerateCover dell'ASL (300 s, con un retry su timeout),
+            // lasciando margine per salvare la copertina e chiudere il task.
+            'timeout_seconds' => 270,
         ],
     ],
 

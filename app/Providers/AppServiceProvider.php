@@ -237,8 +237,7 @@ class AppServiceProvider extends ServiceProvider
                     $app->make(WorkflowTaskHeartbeat::class),
                     (string) config('services.local_cover.comfyui.base_url'),
                     (string) config('services.local_cover.comfyui.workflow'),
-                    (string) config('services.local_cover.comfyui.checkpoint'),
-                    (int) config('services.local_cover.comfyui.timeout_seconds', 240),
+                    (int) config('services.local_cover.comfyui.timeout_seconds', 270),
                 ),
             };
         });

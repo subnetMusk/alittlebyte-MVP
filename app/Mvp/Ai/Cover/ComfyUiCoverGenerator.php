@@ -12,10 +12,10 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Copertina generata da un server ComfyUI locale, provider opzionale del
- * profilo di esecuzione locale. Il grafo da eseguire e il checkpoint sono
- * configurazione di deployment (COMFYUI_WORKFLOW, COMFYUI_CHECKPOINT): il
- * codice sostituisce solo i segnaposto %prompt%, %negative_prompt%, %seed%,
- * %width%, %height% e %checkpoint%.
+ * profilo di esecuzione locale. Il grafo da eseguire, modelli compresi, e'
+ * configurazione di deployment (COMFYUI_WORKFLOW): un workflow in formato API
+ * in cui il codice sostituisce solo i segnaposto %prompt%, %negative_prompt%,
+ * %seed%, %width%, %height% e %filename_prefix%. Solo %prompt% e' obbligatorio.
  *
  * Un errore degrada la copertina con un motivo esplicito, come per Bedrock:
  * nessun ripiego su un altro generatore.
@@ -26,6 +26,12 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
 
     private const HEIGHT = 720;
 
+    /** Sottocartella e prefisso dei file salvati nell'output di ComfyUI. */
+    private const FILENAME_PREFIX = 'alittlebyte/cover';
+
+    /** Limite della singola chiamata HTTP, comunque entro la scadenza complessiva. */
+    private const REQUEST_TIMEOUT_SECONDS = 30;
+
     private const CLIENT_ID = 'alittlebyte-mvp';
 
     public function __construct(
@@ -33,7 +39,6 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
         private readonly WorkflowTaskHeartbeat $heartbeat,
         private readonly string $baseUrl,
         private readonly string $workflowPath,
-        private readonly string $checkpoint,
         private readonly int $timeoutSeconds,
         private readonly int $pollIntervalMilliseconds = 2000,
     ) {}
@@ -41,10 +46,17 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
     public function generate(string $prompt, string $tone, string $style, ?string $modelImagePrompt): array
     {
         $workflow = $this->loadWorkflow();
+        $problem = is_string($workflow) ? "workflow non utilizzabile: {$workflow}" : null;
 
-        if ($workflow === null || ! preg_match('#^https?://[^\s/]+#i', $this->baseUrl) || trim($this->checkpoint) === '') {
+        if ($problem === null && ! preg_match('#^https?://[^\s/]+#i', $this->baseUrl)) {
+            $problem = 'COMFYUI_BASE_URL deve essere un URL http(s)';
+        }
+
+        if ($problem !== null || is_string($workflow)) {
+            Log::warning('ComfyUI not configured', ['workflow' => $this->workflowPath, 'problem' => $problem]);
+
             return $this->failure(
-                'Copertina non disponibile: ComfyUI non configurato (COMFYUI_BASE_URL, COMFYUI_CHECKPOINT, COMFYUI_WORKFLOW).',
+                'Copertina non disponibile: ComfyUI non configurato correttamente (COMFYUI_BASE_URL, COMFYUI_WORKFLOW).',
                 'model_not_configured',
             );
         }
@@ -60,13 +72,15 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
             '%seed%' => $seed,
             '%width%' => self::WIDTH,
             '%height%' => self::HEIGHT,
-            '%checkpoint%' => $this->checkpoint,
+            '%filename_prefix%' => self::FILENAME_PREFIX,
         ]);
 
-        $startedAt = microtime(true);
+        // Una sola scadenza per invio, attesa e download: il task GenerateCover
+        // dell'ASL ha un proprio timeout, che questo deve precedere.
+        $deadline = microtime(true) + $this->timeoutSeconds;
 
         try {
-            $promptId = (string) $this->client()
+            $promptId = (string) $this->client($deadline)
                 ->post('/prompt', ['prompt' => $graph, 'client_id' => self::CLIENT_ID])
                 ->throw()
                 ->json('prompt_id');
@@ -75,17 +89,17 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
                 return $this->failure('Copertina non disponibile: ComfyUI non ha accettato il workflow.', 'invalid_response');
             }
 
-            $image = $this->waitForImage($promptId, $startedAt);
+            $outcome = $this->waitForImage($promptId, $deadline);
 
-            if ($image === null) {
-                return $this->failure("Copertina non disponibile: ComfyUI non ha completato la generazione entro {$this->timeoutSeconds} secondi.", 'model_error');
+            if (isset($outcome['failure'])) {
+                return $this->failure(...$outcome['failure']);
             }
 
-            $response = $this->client()->get('/view', $image)->throw();
+            $response = $this->client($deadline)->get('/view', $outcome['image'])->throw();
         } catch (ConnectionException $e) {
             Log::warning('ComfyUI unreachable', ['base_url' => $this->baseUrl, 'message' => $e->getMessage()]);
 
-            return $this->failure('Copertina non disponibile: ComfyUI non raggiungibile.', 'model_error');
+            return $this->failure('Copertina non disponibile: ComfyUI non raggiungibile o senza risposta.', 'model_error');
         } catch (RequestException $e) {
             Log::warning('ComfyUI request failed', ['status' => $e->response->status(), 'message' => mb_substr($e->response->body(), 0, 500)]);
 
@@ -103,59 +117,137 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
     }
 
     /**
-     * Interroga la cronologia finche' il prompt non produce un'immagine o
-     * scade il tempo. Il battito tiene vivo il task del workflow intanto.
+     * Interroga la cronologia finche' il prompt non produce un'immagine, non
+     * termina senza, o scade il tempo. Il battito tiene vivo il task del
+     * workflow intanto. ComfyUI aggiunge il prompt alla cronologia solo a
+     * esecuzione conclusa, con o senza errore.
      *
-     * @return array{filename: string, subfolder: string, type: string}|null
+     * @return array{image: array{filename: string, subfolder: string, type: string}}|array{failure: array{0: string, 1: string}}
      */
-    private function waitForImage(string $promptId, float $startedAt): ?array
+    private function waitForImage(string $promptId, float $deadline): array
     {
-        while (microtime(true) - $startedAt < $this->timeoutSeconds) {
+        while (microtime(true) < $deadline) {
             $this->heartbeat->beat();
 
-            $entry = $this->client()->get("/history/{$promptId}")->throw()->json($promptId);
+            $entry = $this->client($deadline)->get("/history/{$promptId}")->throw()->json($promptId);
 
-            foreach ((array) ($entry['outputs'] ?? []) as $output) {
-                $image = $output['images'][0] ?? null;
+            if (is_array($entry)) {
+                $image = $this->firstImage((array) ($entry['outputs'] ?? []));
 
-                if (is_array($image) && isset($image['filename'])) {
-                    return [
-                        'filename' => (string) $image['filename'],
-                        'subfolder' => (string) ($image['subfolder'] ?? ''),
-                        'type' => (string) ($image['type'] ?? 'output'),
-                    ];
+                if ($image !== null) {
+                    return ['image' => $image];
+                }
+
+                $status = (array) ($entry['status'] ?? []);
+
+                if (($status['status_str'] ?? null) === 'error') {
+                    Log::warning('ComfyUI execution failed', ['prompt_id' => $promptId, 'detail' => $this->executionError($status)]);
+
+                    return ['failure' => ['Copertina non disponibile: ComfyUI ha interrotto la generazione.', 'model_error']];
+                }
+
+                if (($status['completed'] ?? false) === true) {
+                    Log::warning('ComfyUI completed without an image', ['prompt_id' => $promptId]);
+
+                    return ['failure' => ['Copertina non disponibile: ComfyUI non ha restituito un\'immagine.', 'no_payload']];
                 }
             }
 
-            usleep($this->pollIntervalMilliseconds * 1000);
+            $remainingMicroseconds = (int) (($deadline - microtime(true)) * 1_000_000);
+            usleep(max(0, min($this->pollIntervalMilliseconds * 1000, $remainingMicroseconds)));
+        }
+
+        Log::warning('ComfyUI generation timed out', ['prompt_id' => $promptId, 'timeout_seconds' => $this->timeoutSeconds]);
+
+        return ['failure' => ["Copertina non disponibile: ComfyUI non ha completato la generazione entro {$this->timeoutSeconds} secondi.", 'model_error']];
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $outputs
+     * @return array{filename: string, subfolder: string, type: string}|null
+     */
+    private function firstImage(array $outputs): ?array
+    {
+        foreach ($outputs as $output) {
+            $image = is_array($output) ? ($output['images'][0] ?? null) : null;
+
+            if (is_array($image) && isset($image['filename'])) {
+                return [
+                    'filename' => (string) $image['filename'],
+                    'subfolder' => (string) ($image['subfolder'] ?? ''),
+                    'type' => (string) ($image['type'] ?? 'output'),
+                ];
+            }
         }
 
         return null;
     }
 
-    private function client(): PendingRequest
+    /**
+     * @param  array<int|string, mixed>  $status
+     */
+    private function executionError(array $status): string
     {
-        return $this->http->baseUrl($this->baseUrl)->timeout(30)->acceptJson();
+        foreach ((array) ($status['messages'] ?? []) as $message) {
+            if (! is_array($message) || ! is_array($message[1] ?? null)) {
+                continue;
+            }
+
+            if (($message[0] ?? null) === 'execution_error') {
+                return trim(($message[1]['node_type'] ?? '').': '.($message[1]['exception_message'] ?? ''), ': ');
+            }
+
+            if (($message[0] ?? null) === 'execution_interrupted') {
+                return 'esecuzione interrotta';
+            }
+        }
+
+        return 'errore non specificato';
+    }
+
+    private function client(float $deadline): PendingRequest
+    {
+        $remaining = (int) ceil($deadline - microtime(true));
+
+        return $this->http->baseUrl($this->baseUrl)
+            ->timeout(max(1, min(self::REQUEST_TIMEOUT_SECONDS, $remaining)))
+            ->acceptJson();
     }
 
     /**
-     * @return array<string, mixed>|null
+     * @return array<string, mixed>|string il grafo, oppure il motivo per cui non e' utilizzabile.
      */
-    private function loadWorkflow(): ?array
+    private function loadWorkflow(): array|string
     {
         if (! is_file($this->workflowPath)) {
-            return null;
+            return "file {$this->workflowPath} non trovato";
         }
 
         $workflow = json_decode((string) file_get_contents($this->workflowPath), true);
 
-        return is_array($workflow) && $workflow !== [] ? $workflow : null;
+        if (! is_array($workflow) || $workflow === []) {
+            return 'il file non contiene un oggetto JSON';
+        }
+
+        // Il formato API e' una mappa id del nodo -> {class_type, inputs}; il
+        // formato UI salvato dall'editor ha invece nodes e links.
+        foreach ($workflow as $node) {
+            if (! is_array($node) || ! isset($node['class_type']) || ! is_array($node['inputs'] ?? null)) {
+                return 'il file non e\' un workflow in formato API';
+            }
+        }
+
+        if (! str_contains((string) json_encode($workflow), '%prompt%')) {
+            return 'manca il segnaposto %prompt%';
+        }
+
+        return $workflow;
     }
 
     /**
-     * Un segnaposto che occupa l'intero valore prende il tipo del dato (il
-     * seed resta intero); dentro una stringa piu' lunga viene sostituito come
-     * testo.
+     * Un segnaposto che occupa l'intero valore prende il tipo del dato (seed e
+     * dimensioni restano interi); dentro una stringa piu' lunga viene
+     * sostituito come testo.
      *
      * @param  array<int|string, mixed>  $node
      * @param  array<string, string|int>  $values
