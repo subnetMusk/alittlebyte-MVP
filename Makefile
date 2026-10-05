@@ -58,7 +58,7 @@ help:
 	@echo "  $(BLUE)make frontend-serving-local-test$(RESET) Smoke test del serving S3 locale + CDN/edge locale"
 	@echo "  $(BLUE)make openapi-generate$(RESET) Rigenera il client TypeScript"
 	@echo "  $(BLUE)make openapi-validate$(RESET) Valida il contratto OpenAPI"
-	@echo "  $(BLUE)make observability-config$(RESET) Valida la configurazione OTel Collector"
+	@echo "  $(BLUE)make observability-config$(RESET) Valida le configurazioni di Collector, Prometheus, Alertmanager, Loki e Alloy"
 	@echo "  $(BLUE)make observability-up$(RESET) Avvia Collector, Prometheus, Alertmanager, Grafana, Loki e Alloy"
 	@echo "  $(BLUE)make local-tls$(RESET) Genera il certificato TLS locale per Traefik"
 	@echo "  $(BLUE)make trusted-local-tls$(RESET) Genera un certificato locale trusted via mkcert"
@@ -185,9 +185,14 @@ openapi-generate: node-install
 openapi-validate: node-install
 	$(NODE) npx --yes @redocly/cli@latest lint openapi/v1/alittlebyte-mvp-api.yaml
 
+# Alloy v1.5 non ha un comando validate: alloy fmt --test analizza la sintassi
+# e fallisce anche su un file non formattato in modo canonico.
 observability-config:
-	docker compose run --rm --no-deps otel-collector validate --config=/etc/otelcol-contrib/config.yml
-	docker compose run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
+	docker compose run --rm --no-deps -T otel-collector validate --config=/etc/otelcol-contrib/config.yml
+	docker compose run --rm --no-deps -T --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
+	docker compose run --rm --no-deps -T --entrypoint amtool alertmanager check-config /etc/alertmanager/alertmanager.yml
+	docker compose run --rm --no-deps -T loki -config.file=/etc/loki/loki-config.yml -verify-config
+	docker compose run --rm --no-deps -T alloy fmt --test /etc/alloy/config.alloy
 
 observability-up:
 	docker compose up -d otel-collector prometheus alertmanager grafana loki alloy

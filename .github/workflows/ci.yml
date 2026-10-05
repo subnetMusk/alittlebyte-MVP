@@ -357,6 +357,10 @@ jobs:
   stack:
     name: Stack, security and a11y
     runs-on: ubuntu-latest
+    # Nome di progetto Compose diverso da quello derivato dalla cartella: lo
+    # smoke dei log verifica che la raccolta non dipenda dal nome del checkout.
+    env:
+      COMPOSE_PROJECT_NAME: ci-smoke-${{ github.run_id }}
 
     steps:
       - name: Checkout
@@ -507,7 +511,7 @@ jobs:
         run: docker compose --profile release run --rm migrate
 
       - name: Start runtime
-        run: docker compose up -d app queue nginx traefik otel-collector prometheus alertmanager grafana
+        run: docker compose up -d app queue queue-communications nginx traefik otel-collector prometheus alertmanager grafana loki alloy
 
       - name: Smoke HTTPS endpoints
         run: |
@@ -561,6 +565,31 @@ jobs:
             --resolve grafana.localhost:8443:127.0.0.1
           # Senza credenziali le UI protette devono rispondere 401
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' --insecure --resolve prometheus.localhost:8443:127.0.0.1 https://prometheus.localhost:8443/-/ready)" = "401"
+
+      # Alloy scopre i container per la label com.alittlebyte.observability.logs,
+      # non per progetto Compose: Loki deve ricevere i log con la label service
+      # e con la label project di questo run. Si interroga Loki dal proxy dei
+      # datasource di Grafana, l'unico accesso esposto da Traefik.
+      - name: Smoke centralized logs
+        run: |
+          loki_api() {
+            curl --silent --fail --insecure --resolve grafana.localhost:8443:127.0.0.1 --user "admin:admin" \
+              "https://grafana.localhost:8443/api/datasources/proxy/uid/loki/loki/api/v1/$1"
+          }
+
+          for _ in {1..60}; do
+            if loki_api "label/project/values" | jq -e --arg project "$COMPOSE_PROJECT_NAME" '.data | index($project)' > /dev/null; then
+              break
+            fi
+
+            sleep 3
+          done
+
+          echo "Label: $(loki_api labels | jq -c .data)"
+          echo "Progetti: $(loki_api label/project/values | jq -c .data)"
+          echo "Servizi: $(loki_api label/service/values | jq -c .data)"
+          loki_api labels | jq -e '.data | index("service")' > /dev/null
+          loki_api "label/project/values" | jq -e --arg project "$COMPOSE_PROJECT_NAME" '.data | index($project)' > /dev/null
 
       # Il volume node-modules è per-job: l'npm ci del job frontend non è
       # disponibile qui e va rieseguito prima degli audit a11y
