@@ -175,10 +175,11 @@ MVP_EXECUTION_PROFILE=local
 
 poi `docker compose up -d app queue queue-communications`, che ricrea i tre container con il nuovo
 ambiente. Le variabili non passano da SSM, quindi non serve `make refresh-runtime`. Per verificare
-quale adapter è attivo:
+quale adapter è attivo (`HOME=/tmp` serve a tinker, che altrimenti non può scrivere la propria
+configurazione e non stampa nulla):
 
 ```bash
-docker compose exec app php artisan tinker --execute="echo get_class(app(App\Mvp\Documents\Domain\Ports\Outbound\OcrGatewayPort::class));"
+docker compose exec -e HOME=/tmp queue php artisan tinker --execute="echo get_class(app(App\Mvp\Documents\Domain\Ports\Outbound\OcrGatewayPort::class));"
 ```
 
 Un valore non previsto di `MVP_EXECUTION_PROFILE` o di `LOCAL_COVER_PROVIDER` ferma l'applicazione
