@@ -1,77 +1,141 @@
-# Communication Pipeline Runbook
+# Runbook della pipeline delle comunicazioni
 
-## Normal Flow
+## Flusso normale
 
-1. SPA posts a prompt to `POST /api/v1/communications`.
-2. `GenerateCommunicationRequest` validates prompt, tone and style.
-3. The controller stores the communication with `generation_status=pending` and returns **202** with a relative `streamUrl`.
-4. `StartCommunicationWorkflowService::start()` starts the Step Functions execution and stores execution metadata on `communications`.
-5. Step Functions sends callback-token tasks to the communications SQS queue.
-6. `php artisan mvp:workflow:consume --queue=communications` receives each message, executes the task through `CommunicationWorkflowTaskHandler`, and calls `SendTaskSuccess` or `SendTaskFailure`.
-7. `communication.generate_text` calls Bedrock and stores `generated_title`, `generated_body` and `image_prompt`. The text model also writes the visual direction for the cover, having the generated text in front of it, so the artwork follows the actual communication rather than the raw operator prompt. A failure here fails the execution: the communication is the text.
-8. `communication.generate_cover` sends `image_prompt` to the image model and stores the result on the cover disk (`MVP_COMMUNICATION_COVER_DISK`, the emulated S3 by default) under `MVP_COMMUNICATION_COVER_PREFIX`. When the text model returned no visual direction, a generic corporate subject is used. A failure here is recorded on `cover_status`/`cover_error` and the task still succeeds: a missing cover degrades the communication, it does not invalidate it.
-9. `communication.finalize` marks `generation_status=completed`, closes a cover left pending by the ASL degraded branch, and records metrics.
-10. The SPA follows `GET /api/v1/communications/{communication}/stream` and receives `progress`, `text`, `cover`, `done` and `error` events. The text arrives roughly ten seconds before the cover.
-11. Once `generation_status=completed`, the SPA exposes the final laid-out document through `GET /api/v1/communications/{communication}/preview` (inline) and `GET .../export` (attachment). Both are gated on a completed, non-discarded communication and answer **422** otherwise. See "Final PDF" below.
+Stati della state machine (`infra/localstack/state-machines/communication-pipeline.asl.json`):
+`ValidateInput` → `GenerateText` → `ValidateGeneratedText` → `GenerateCover` →
+`FinalizeCommunication` → `Completed`. Se `GenerateCover` fallisce anche dopo il retry, il ramo
+`MarkCoverDegraded` porta comunque a `FinalizeCommunication`: una copertina mancante degrada la
+comunicazione, non la invalida.
 
-## Required Runtime Configuration
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SPA
+    participant API as API Laravel
+    participant SFN as Step Functions
+    participant W as Worker queue-communications
+    participant AI as Bedrock
 
-| Variable | Required for | Notes |
+    SPA->>API: POST /api/v1/communications
+    API->>SFN: StartExecution
+    API-->>SPA: 202 con streamUrl
+    SPA->>API: GET .../stream (SSE)
+    Note over SFN: ValidateInput: metadata.valid = false porta a Failed
+    SFN->>W: GenerateText (communication.generate_text, via SQS)
+    W->>AI: modello testo
+    W->>SFN: SendTaskSuccess (titolo, corpo, image_prompt)
+    API-->>SPA: evento text
+    Note over SFN: ValidateGeneratedText: testo fallito porta a Failed
+    SFN->>W: GenerateCover (communication.generate_cover)
+    W->>AI: modello immagini
+    alt copertina generata
+        W->>SFN: SendTaskSuccess
+    else errore del modello o timeout
+        Note over SFN: Catch verso MarkCoverDegraded (Pass)
+    end
+    SFN->>W: FinalizeCommunication (communication.finalize)
+    W->>SFN: SendTaskSuccess
+    API-->>SPA: eventi cover e done
+```
+
+1. La SPA invia prompt, tono e stile a `POST /api/v1/communications`.
+2. `GenerateCommunicationRequest` li valida.
+3. Il controller salva la comunicazione con `generation_status=pending` e risponde **202** con uno
+   `streamUrl` relativo.
+4. `StartCommunicationWorkflowService::start()` avvia l'esecuzione Step Functions e ne salva i
+   metadati su `communications`, sotto lock nella stessa transazione.
+5. Step Functions pubblica i task con callback token sulla coda SQS delle comunicazioni.
+6. `php artisan mvp:workflow:consume --queue=communications` riceve ogni messaggio, esegue il task
+   tramite `CommunicationWorkflowTaskHandler` e chiama `SendTaskSuccess` o `SendTaskFailure`.
+7. `communication.generate_text` chiama Bedrock e salva `generated_title`, `generated_body` e
+   `image_prompt`. È il modello del testo, con il testo davanti, a scrivere anche la direzione visiva
+   della copertina: l'immagine segue la comunicazione reale, non il prompt grezzo dell'operatore.
+   Un errore qui fa fallire l'esecuzione, perché la comunicazione è il testo.
+8. `communication.generate_cover` manda `image_prompt` al modello immagini e salva il risultato sul
+   disco delle copertine (`MVP_COMMUNICATION_COVER_DISK`, di default S3 emulato) sotto
+   `MVP_COMMUNICATION_COVER_PREFIX`. Senza direzione visiva usa un soggetto aziendale generico. Un
+   errore qui viene registrato in `cover_status` e `cover_error` e il task riesce comunque.
+9. `communication.finalize` imposta `generation_status=completed`, chiude una copertina rimasta in
+   attesa dopo il ramo degradato e registra le metriche.
+10. La SPA segue `GET /api/v1/communications/{communication}/stream` e riceve gli eventi `progress`,
+    `text`, `cover`, `done` ed `error`. Il testo arriva circa dieci secondi prima della copertina.
+11. A generazione conclusa, la SPA mostra il documento impaginato con
+    `GET /api/v1/communications/{communication}/preview` (inline) e `GET .../export` (allegato).
+    Entrambi richiedono una comunicazione completata e non scartata, altrimenti rispondono **422**.
+    Vedi "PDF finale".
+
+## Configurazione runtime richiesta
+
+| Variabile | Serve a | Note |
 | --- | --- | --- |
-| `COMMUNICATION_PIPELINE_STATE_MACHINE_ARN` | API workflow start | Created by LocalStack Terraform in local runs. |
-| `COMMUNICATION_PIPELINE_TASK_QUEUE_URL` | API and worker | SQS callback-token queue URL, separate from the document one. |
-| `COMMUNICATION_PIPELINE_DLQ_URL` | DLQ diagnostics | Used by `mvp:dlq:list --queue=communications`. |
-| `MVP_COMMUNICATION_COVER_DISK` | Cover storage | Defaults to the emulated S3 (`s3`) and stays there even when documents move to `real_s3` for Textract: covers are generated assets, not HR documents. |
-| `MVP_COMMUNICATION_COVER_PREFIX` | Cover storage | Object key prefix, defaults to `communications/covers`. |
-| `MVP_COMMUNICATION_PDF_DISK` | Final PDF cache | Disk holding the materialized PDFs. Falls back to `MVP_COMMUNICATION_COVER_DISK`, then to `FILESYSTEM_DISK`: another generated asset, same reasoning as covers. |
-| `MVP_COMMUNICATION_PDF_PREFIX` | Final PDF cache | Object key prefix, defaults to `communications/exports`. Kept separate from covers so the two asset families can be purged independently. |
-| `MVP_COMMUNICATION_TIMEOUT_SECONDS` | Stuck detection | Age after which a processing generation is reported as stuck. |
-| `BEDROCK_MODEL_ID` | Text generation | Real Bedrock access must be granted externally. |
-| `BEDROCK_IMAGE_MODEL_ID` | Cover generation | Defaults to `stability.sd3-5-large-v1:0`. The request payload is derived from the configured model family (Stability SD3/Core, Stability XL, Nova Canvas). Without a reachable model every cover degrades with an explicit warning. |
-| `BEDROCK_IMAGE_REGION` | Cover generation | Region serving the image model (defaults to `us-west-2`), usually different from the text model one. The cover uses a dedicated Bedrock client; leave empty to reuse `BEDROCK_REGION`. |
+| `COMMUNICATION_PIPELINE_STATE_MACHINE_ARN` | Avvio del workflow dall'API | Creata da Terraform in LocalStack. |
+| `COMMUNICATION_PIPELINE_TASK_QUEUE_URL` | API e worker | Coda dei task con callback token, separata da quella documentale. |
+| `COMMUNICATION_PIPELINE_DLQ_URL` | Diagnostica della DLQ | Usata da `mvp:dlq:list --queue=communications`. |
+| `MVP_COMMUNICATION_COVER_DISK` | Storage delle copertine | Di default S3 emulato (`s3`), anche quando i documenti passano a `real_s3` per Textract: le copertine sono asset generati, non documenti HR. |
+| `MVP_COMMUNICATION_COVER_PREFIX` | Storage delle copertine | Prefisso delle chiavi, di default `communications/covers`. |
+| `MVP_COMMUNICATION_PDF_DISK` | Cache del PDF finale | Disco dei PDF materializzati. Se manca usa `MVP_COMMUNICATION_COVER_DISK`, poi `FILESYSTEM_DISK`. |
+| `MVP_COMMUNICATION_PDF_PREFIX` | Cache del PDF finale | Prefisso delle chiavi, di default `communications/exports`, separato dalle copertine perché le due famiglie si possano svuotare in modo indipendente. |
+| `MVP_COMMUNICATION_TIMEOUT_SECONDS` | Rilevamento dei blocchi | Età oltre la quale una generazione in corso risulta bloccata. |
+| `BEDROCK_MODEL_ID` | Generazione del testo | L'accesso al modello va abilitato nell'account AWS. |
+| `BEDROCK_IMAGE_MODEL_ID` | Generazione della copertina | Default `stability.sd3-5-large-v1:0`. Il payload dipende dalla famiglia del modello (Stability SD3/Core, Stability XL, Nova Canvas). Senza un modello raggiungibile ogni copertina degrada con un avviso esplicito. |
+| `BEDROCK_IMAGE_REGION` | Generazione della copertina | Regione del modello immagini (default `us-west-2`), di solito diversa da quella del testo; la copertina usa un client Bedrock dedicato. Vuota, riusa `BEDROCK_REGION`. |
 
-The two pipeline variables are part of `RuntimeConfigurationLoader::REQUIRED_KEYS`: after pulling a change that adds them, run `make refresh-runtime` so SSM parameters are rewritten and the runtime cache is rebuilt. `StartCommunicationWorkflowService::start()` also fails fast with an actionable message when either value is missing.
+Le due variabili della pipeline sono fra le `REQUIRED_KEYS` di `RuntimeConfigurationLoader`: dopo
+un aggiornamento che le introduce, `make refresh-runtime` riscrive SSM e ricostruisce la cache.
+`StartCommunicationWorkflowService::start()` fallisce comunque subito, con un messaggio chiaro, se
+una delle due manca.
 
-## Manual Smoke
+## Prova manuale
 
 ```bash
 make setup
 curl --insecure https://localhost:8443/health
 ```
 
-Generate a communication from the SPA, then watch:
+Generare una comunicazione dalla SPA, poi:
 
 ```bash
 make logs
 docker compose exec app php artisan mvp:dlq:list --queue=communications
 ```
 
-Worker logs are also available in Grafana (Loki): see the `communication-pipeline` dashboard or query `{project="mvp", service="queue-communications"}` in the `Logs and Errors` dashboard.
+I log del worker sono anche in Grafana: dashboard `communication-pipeline`, oppure la query
+`{project="<progetto>", service="queue-communications"}` nella dashboard `Logs and Errors`.
 
-## Scaling Workers
+## Più worker
 
 ```bash
-make workers WORKERS=2   # scales both queue and queue-communications
+make workers WORKERS=2   # scala sia queue sia queue-communications
 ```
 
-Multiple workers are safe: each Step Functions callback token is tracked in `workflow_tasks` (`task_token_hash` unique) and claimed atomically, so a duplicate SQS delivery is consumed without re-running the business logic (`mvp_sqs_messages_duplicate_total` counts these). The SQS `visibility_timeout_seconds` (900s, Terraform) exceeds the longest ASL task timeout (300s), so an in-flight message never becomes visible to a second worker while still being processed. Workers send `SendTaskHeartbeat` between image generation attempts; a stale `running` task (dead worker) is re-claimable after `MVP_WORKFLOW_CLAIM_TTL_SECONDS` (default 900s).
+Più worker sono sicuri: ogni callback token è registrato in `workflow_tasks` (`task_token_hash`
+univoco) e reclamato in modo atomico, quindi una consegna SQS duplicata non riesegue la logica di
+business (`mvp_sqs_messages_duplicate_total` la conta). Il `visibility_timeout_seconds` della coda
+(900 s) supera il timeout del task più lungo dell'ASL (300 s, la copertina). I worker inviano
+`SendTaskHeartbeat` fra un tentativo di generazione dell'immagine e l'altro; un task rimasto
+`running` per un worker morto torna reclamabile dopo `MVP_WORKFLOW_CLAIM_TTL_SECONDS` (default
+900 s).
 
-The communications queue is separate from the documents queue: a slow image generation cannot consume the consumers of the document pipeline, and each domain has its own DLQ and backlog signals.
+La coda delle comunicazioni è separata da quella documentale: una generazione di immagini lenta non
+occupa i consumatori dell'altra pipeline, e ogni dominio ha la propria DLQ e i propri segnali di
+backlog.
 
-## Degraded Cover
+## Copertina degradata
 
-A degraded cover is an expected outcome, not an incident: the communication stays valid and usable, and the SPA shows the reason under the preview.
+Una copertina degradata è un esito previsto, non un incidente: la comunicazione resta valida e
+utilizzabile, e la SPA mostra il motivo sotto l'anteprima.
 
-| `cover_error` reason | Metric label | Cause |
+| Motivo in `cover_error` | Label della metrica | Causa |
 | --- | --- | --- |
-| Image model not configured | `model_not_configured` | `BEDROCK_IMAGE_MODEL_ID` is empty. |
-| Account has no access to the model | `model_access_denied` | Model access not granted in the AWS account. |
-| Legacy or inactive model | `model_not_available` | The configured image model is no longer served. |
-| Invalid credentials | `invalid_credentials` | `AWS_REAL_*` expired or wrong. |
-| Blocked by safety controls | `content_filter` | The model refused prompt or output. |
-| Generation interrupted | `timeout` | The ASL degraded branch closed a cover left pending. |
+| Modello immagini non configurato | `model_not_configured` | `BEDROCK_IMAGE_MODEL_ID` vuoto. |
+| Account senza accesso al modello | `model_access_denied` | Accesso al modello non abilitato. |
+| Modello obsoleto o non attivo | `model_not_available` | Il modello configurato non è più servito. |
+| Credenziali non valide | `invalid_credentials` | `AWS_REAL_*` scadute o errate. |
+| Bloccata dai controlli di sicurezza | `content_filter` | Il modello ha rifiutato prompt o output. |
+| Generazione interrotta | `timeout` | Il ramo degradato dell'ASL ha chiuso una copertina rimasta in attesa. |
 
-Inspect the most frequent reasons:
+I motivi più frequenti:
 
 ```sql
 SELECT cover_status, cover_error, count(*)
@@ -81,44 +145,64 @@ GROUP BY cover_status, cover_error
 ORDER BY count(*) DESC;
 ```
 
-`CommunicationCoverGenerationDegraded` fires only above three degradations in thirty minutes, so a single refused prompt does not page anyone.
+`CommunicationCoverGenerationDegraded` scatta solo oltre tre degradazioni in trenta minuti: un
+singolo prompt rifiutato non allerta nessuno.
 
-## Final PDF
+## PDF finale
 
-`DompdfCommunicationPdfRenderer` (behind the `CommunicationPdfRendererPort`, orchestrated by `ExportCommunicationService`) lays out title, body and cover into the A4 document served by both `preview` and `export`. Every page carries the `Creato da AI Assistant` transparency marker, both as a diagonal watermark and in the NEXUM footer (brand on the left, the marker in the middle, page numbers on the right), stamped through the dompdf canvas API because dompdf does not render CSS3 margin boxes.
+`DompdfCommunicationPdfRenderer`, dietro `CommunicationPdfRendererPort` e orchestrato da
+`ExportCommunicationService`, impagina titolo, corpo e copertina nel documento A4 servito da
+`preview` ed `export`. Ogni pagina porta il marcatore di trasparenza `Creato da AI Assistant`, sia
+come filigrana diagonale sia nel piè di pagina (marchio a sinistra, marcatore al centro, numero di
+pagina a destra), disegnato con l'API canvas di dompdf perché dompdf non gestisce i margin box CSS3.
 
-Rendering is the most expensive operation in the API and its result is deterministic, so the PDF is **materialized once** on the storage disk and re-read afterwards:
+Il rendering è l'operazione più costosa dell'API e il risultato è deterministico, quindi il PDF viene
+**materializzato una volta** sul disco e poi riletto:
 
-- the object key is a fingerprint (SHA-1) of title, body, cover status, cover path and cover MIME, stored at `{MVP_COMMUNICATION_PDF_PREFIX}/{id}/{fingerprint}.pdf`;
-- **invalidation is implicit**: change the cover or the text and the fingerprint changes, so a new object is written and the stale one is simply never requested again. No invalidation hook lives in the services that mutate a communication;
-- the same fingerprint is returned as the `ETag`. A client sending a matching `If-None-Match` gets a **304** without dompdf or the storage being touched at all.
+- la chiave è un'impronta SHA-1 di titolo, corpo, stato, percorso e MIME della copertina, in
+  `{MVP_COMMUNICATION_PDF_PREFIX}/{id}/{impronta}.pdf`;
+- **l'invalidazione è implicita**: se cambiano testo o copertina cambia l'impronta, viene scritto un
+  oggetto nuovo e quello vecchio non viene più chiesto. Nessun hook di invalidazione nei servizi che
+  modificano una comunicazione;
+- l'impronta è anche l'`ETag`: con un `If-None-Match` uguale la risposta è **304**, senza toccare
+  dompdf né lo storage.
 
-The fingerprint cannot see changes to the Blade template, the watermark or the footer. Those are covered by `DompdfCommunicationPdfRenderer::RENDER_VERSION`: **bump it in the same commit that changes the layout**, or already-materialized PDFs keep being served with the old one.
+L'impronta non vede le modifiche al template Blade, alla filigrana o al piè di pagina. Per quelle
+c'è `DompdfCommunicationPdfRenderer::RENDER_VERSION`: **va incrementata nello stesso commit che
+cambia l'impaginazione**, altrimenti i PDF già materializzati continuano a uscire con quella vecchia.
 
-The cache is an optimization, never a dependency. If the disk is missing or misconfigured, `Storage::disk()` throws at resolution time: the service catches it, reports it and re-renders on every request, so the export keeps working while degraded. `MvpAppRoutesTest` locks this behaviour in (`the export survives an unavailable PDF cache disk`).
+La cache è un'ottimizzazione, mai una dipendenza. Se il disco manca o è configurato male,
+`Storage::disk()` lancia un'eccezione già alla risoluzione: il servizio la intercetta, la segnala e
+rifà il rendering a ogni richiesta, così l'export funziona anche in degrado. Il test
+`the export survives an unavailable PDF cache disk` in `MvpAppRoutesTest` fissa il comportamento.
 
-Both routes carry an explicit `throttle:30,1`, tighter than the 60/min group bucket: these are the heaviest responses in the API and originate from a human click, not from a list render.
+Le due rotte hanno un `throttle:30,1` esplicito, più stretto del limite di gruppo di 60 al minuto:
+sono le risposte più pesanti dell'API e partono da un clic, non dal rendering di un elenco.
 
-Purge the materialized copies (they are rebuilt on the next request):
+Per svuotare le copie materializzate, che si ricostruiscono alla richiesta successiva:
 
 ```bash
 docker compose exec app php artisan tinker --execute="Storage::disk(config('mvp.communications.pdf_disk'))->deleteDirectory(config('mvp.communications.pdf_prefix'));"
 ```
 
-## SSE Stream Timeout and PHP-FPM Pool
+## Timeout dello stream SSE e pool PHP-FPM
 
-`CommunicationStreamController::stream()` reports progress over SSE for up to `mvp.communications.stream_timeout_seconds` (default 900s). On timeout it sends `still_running`, not `error`: the frontend keeps the progress UI active instead of showing a failure — the worker is still processing. See the Document Pipeline runbook's equivalent section for why the PHP-FPM pool (`docker/php/www-pool.conf`, shared by both pipelines' streams on the same `app` service) was resized alongside this change.
+`CommunicationStreamController::stream()` invia l'avanzamento via SSE per al massimo
+`mvp.communications.stream_timeout_seconds` (default 900 s). Allo scadere invia `still_running`, non
+`error`: la SPA lascia attivo l'avanzamento, perché il worker sta ancora lavorando. Il pool PHP-FPM,
+condiviso dagli stream delle due pipeline sul servizio `app`, è dimensionato per questo: vedi la
+sezione corrispondente di [`document-pipeline.md`](document-pipeline.md#timeout-dello-stream-sse-e-pool-php-fpm).
 
-## Failure States
+## Fallimenti
 
-| Failure | Observable signal | Operator action |
+| Fallimento | Segnale osservabile | Azione |
 | --- | --- | --- |
-| Workflow start failure | `workflow_failed_at`, audit event, `mvp_stepfunctions_executions_failed_total` | Check state machine ARN and SQS queue URL, then `make refresh-runtime`. |
-| SQS task failure | `workflow_tasks.status=failed`, worker log | Inspect DLQ and task error. |
-| Text generation failure | `generation_status=failed`, `error_message` on the communication | Check model access, model ID and credentials. |
-| Cover degraded | `cover_status=failed`, `mvp_communication_covers_failed_total{reason}` | See "Degraded Cover"; no action needed for isolated events. |
-| Cover storage failure | `mvp_communication_cover_storage_failed_total{operation}` | Check bucket, prefix and disk credentials. |
-| Stuck communication | `mvp_communication_stuck_processing_total` | Check worker, SQS queue and Step Functions execution. |
-| PDF cache unavailable | Reported exception from `DompdfCommunicationPdfRenderer`, no 5xx to the user | Preview and export still work but re-render every time: check `MVP_COMMUNICATION_PDF_DISK`, bucket and credentials. |
-| Stale PDF layout after a template change | Exported PDF still shows the old layout | `RENDER_VERSION` was not bumped: increment it, or purge the prefix as shown above. |
-| SSE stream timed out (`still_running`) | Frontend keeps polling state, no error shown | Not a failure by itself — check `mvp_communication_stuck_processing_total` before assuming otherwise. |
+| Avvio del workflow fallito | `workflow_failed_at`, evento di audit, `mvp_stepfunctions_executions_failed_total` | Controllare l'ARN della state machine e l'URL della coda, poi `make refresh-runtime`. |
+| Task SQS fallito | `workflow_tasks.status=failed`, log del worker, alert `CommunicationPipelineTaskFailed` | Ispezionare la DLQ e l'errore del task ([`dlq-recovery.md`](dlq-recovery.md)). |
+| Generazione del testo fallita | `generation_status=failed`, `error_message` sulla comunicazione | Controllare accesso al modello, ID del modello e credenziali. |
+| Copertina degradata | `cover_status=failed`, `mvp_communication_covers_failed_total{reason}` | Vedi "Copertina degradata"; nessuna azione per eventi isolati. |
+| Storage delle copertine non disponibile | `mvp_communication_cover_storage_failed_total{operation}`, alert `CommunicationCoverStorageFailing` | Controllare bucket, prefisso e credenziali del disco. |
+| Comunicazione bloccata | `mvp_communications_stuck_processing`, alert `CommunicationStuckInProcessing` | Controllare worker, coda SQS ed esecuzione Step Functions. |
+| Cache del PDF non disponibile | Eccezione segnalata da `DompdfCommunicationPdfRenderer`, nessun 5xx all'utente | Anteprima ed export funzionano ma rifanno il rendering ogni volta: controllare `MVP_COMMUNICATION_PDF_DISK`, bucket e credenziali. |
+| Impaginazione vecchia dopo una modifica del template | Il PDF esportato mostra ancora il layout precedente | `RENDER_VERSION` non è stata incrementata: incrementarla o svuotare il prefisso. |
+| Stream SSE scaduto (`still_running`) | La SPA continua a leggere lo stato, nessun errore mostrato | Non è un fallimento: controllare `mvp_communications_stuck_processing` prima di supporlo. |
