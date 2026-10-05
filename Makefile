@@ -1,4 +1,4 @@
-.PHONY: help test backend-coverage pint node-install frontend-build frontend-lint frontend-test frontend-coverage frontend-typecheck frontend-audit frontend-a11y frontend-s3-local-provision frontend-s3-local-upload frontend-s3-local-deploy edge-cdn-local-url frontend-serving-local-test openapi-generate openapi-validate observability-config observability-up local-tls trusted-local-tls fresh logs sh restart setup release infra-up infra-init infra-plan infra-apply infra-destroy refresh-runtime verify verify-fast verify-backend verify-frontend verify-infra verify-observability verify-ci-local aws-smoke reset-all workers backup-local restore-local
+.PHONY: help test backend-coverage pint node-install frontend-build frontend-lint frontend-test frontend-coverage frontend-typecheck frontend-audit frontend-a11y frontend-s3-local-provision frontend-s3-local-upload frontend-s3-local-deploy edge-cdn-local-url frontend-serving-local-test openapi-generate openapi-validate observability-config observability-up local-tls trusted-local-tls fresh logs sh restart setup release infra-up infra-init infra-plan infra-apply infra-destroy refresh-runtime verify verify-fast verify-backend verify-frontend verify-infra verify-observability verify-docs verify-ci-local aws-smoke reset-all workers backup-local restore-local
 
 # Colori per l'output
 BLUE  := \033[34m
@@ -78,12 +78,13 @@ help:
 	@echo "  $(BLUE)make infra-destroy$(RESET) Distrugge le risorse LocalStack"
 	@echo "  $(BLUE)make refresh-runtime$(RESET) Riapplica SSM/Secrets e ricarica app+queue (dopo modifiche al .env)"
 	@echo "  $(BLUE)make verify-fast$(RESET)   Esegue i controlli locali rapidi"
+	@echo "  $(BLUE)make verify-docs$(RESET)   Verifica link relativi e anchor dei file Markdown"
 	@echo "  $(BLUE)make verify$(RESET)        Esegue la batteria completa locale"
 	@echo "  $(BLUE)make aws-smoke$(RESET)     Controlla la configurazione per AWS reale nel .env, senza chiamare i servizi"
 	@echo "  $(BLUE)make reset-all$(RESET)     Reset TOTALE: volumi locali + S3 reale, poi setup da zero (FORCE=1 senza conferma)"
 
 # Quality gate rapido: usa solo container e non richiede credenziali AWS reali.
-verify-fast: verify-backend verify-frontend verify-infra verify-observability
+verify-fast: verify-backend verify-frontend verify-infra verify-observability verify-docs
 
 # Quality gate completo locale: include contratto OpenAPI e audit dipendenze frontend.
 verify: verify-fast openapi-validate frontend-audit
@@ -111,6 +112,9 @@ verify-infra:
 	$(TERRAFORM) validate
 
 verify-observability: observability-config
+
+verify-docs:
+	$(NODE) node scripts/ci/check-markdown-links.mjs
 
 verify-ci-local: verify-fast openapi-validate
 

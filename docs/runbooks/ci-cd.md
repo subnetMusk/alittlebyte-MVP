@@ -13,11 +13,12 @@ flowchart LR
   push --> frontend["frontend"]
   push --> stack["stack"]
   push --> secrets["secrets"]
+  push --> docs["docs"]
   backend --> diff["coverage-diff"]
   frontend --> diff
 ```
 
-Cinque job; tutti tranne `secrets` passano da Docker Compose.
+Sei job; tutti tranne `secrets` e `docs` passano da Docker Compose.
 
 - **backend**: costruisce l'immagine dell'app ed esegue `composer validate`, Pint, Larastan, la
   verifica della Dependency Rule, Pest con copertura di righe e branch (Xdebug), le soglie globali e,
@@ -44,6 +45,8 @@ Cinque job; tutti tranne `secrets` passano da Docker Compose.
 - **secrets**: scansiona con gitleaks l'intera history Git, non solo l'albero corrente: un segreto
   tolto da un commit successivo resta leggibile in quelli precedenti. Le eccezioni sono in
   `.gitleaks.toml` e coprono solo le credenziali dimostrative dello stack locale.
+- **docs**: `scripts/ci/check-markdown-links.mjs` verifica i link relativi e le anchor di tutti i
+  file Markdown; i link esterni non vengono controllati, perché dipendono dalla rete.
 
 Se uno smoke o un audit di accessibilità fallisce, l'artifact `stack-diagnostics` contiene
 `docker compose ps`, i log di Compose con i timestamp e l'uso del disco di Docker; lo stack viene

@@ -152,11 +152,12 @@ S3, Textract e Bedrock è il workflow manuale `aws-smoke.yml` ([`ci-cd.md`](ci-c
 
 | Target | Cosa controlla |
 | --- | --- |
-| `make verify-fast` | Le quattro verifiche qui sotto |
+| `make verify-fast` | Le cinque verifiche qui sotto |
 | `make verify-backend` | `composer validate`, elenco delle rotte, Pest, Pint, Larastan, Dependency Rule |
 | `make verify-frontend` | Generazione del client OpenAPI, lint, typecheck, test Jest e build |
 | `make verify-infra` | Configurazione Compose, `terraform fmt` e `terraform validate` |
 | `make verify-observability` | Configurazioni di Collector, Prometheus con le regole, Alertmanager, Loki e Alloy |
+| `make verify-docs` | Link relativi e anchor dei file Markdown |
 | `make verify` | `verify-fast`, lint del contratto OpenAPI e audit npm delle dipendenze di produzione |
 | `make verify-ci-local` | `verify-fast` e lint del contratto OpenAPI |
 | `make backend-coverage`, `make frontend-coverage` | Copertura con le soglie globali di `coverage-thresholds.json` |

@@ -1,6 +1,6 @@
 name: CI
 
-# Pipeline composta da cinque job con responsabilità separate:
+# Pipeline composta da sei job con responsabilità separate:
 #   backend: build immagine app di sviluppo, controlli PHP e coverage globale
 #   frontend: suite SPA, contratto OpenAPI e coverage globale
 #   coverage-diff: coverage del codice modificato rispetto al commit base
@@ -8,6 +8,7 @@ name: CI
 #   stack: IaC, osservabilità, build di produzione, scansione Trivy,
 #          smoke HTTPS, accessibilità e pubblicazione GHCR
 #   secrets: scansione gitleaks dell'intera history
+#   docs: link relativi e anchor dei file Markdown
 # Ogni job acquisisce le immagini esterne senza pull anonimi: mirror GHCR
 # (autenticato, nessun rate limit per-IP) con fallback upstream; il job stack
 # usa anche la cache di Actions (zero pull a cache hit). Vedi
@@ -264,6 +265,19 @@ jobs:
           docker run --rm -v "$PWD:/repo:ro"
           ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
           git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+
+  docs:
+    name: Documentation links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Solo link relativi e anchor: quelli esterni dipendono dalla rete e
+      # renderebbero il gate instabile.
+      - name: Check Markdown links
+        run: node scripts/ci/check-markdown-links.mjs
 
   coverage-diff:
     name: Coverage diff
