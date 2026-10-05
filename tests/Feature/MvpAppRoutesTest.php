@@ -1215,7 +1215,7 @@ test('the review breakdown carries its own denominator', function () {
     // ripartizione mostra gli esiti raggiunti, non quelli possibili.
     SubDocument::factory()->create(['review_status' => ReviewStatus::AutoValidated]);
     SubDocument::factory()->create(['review_status' => ReviewStatus::ManuallyValidated]);
-    SubDocument::factory()->create(['review_status' => ReviewStatus::NeedsReview]);
+    SubDocument::factory()->has(ExtractedData::factory(), 'extractedData')->create(['review_status' => ReviewStatus::NeedsReview]);
 
     $metrics = collect($this->getJson('/api/v1/state')->json('copilot.metrics'))->keyBy('key');
     $breakdown = $metrics['copilot.review_breakdown'];
@@ -1225,7 +1225,23 @@ test('the review breakdown carries its own denominator', function () {
         ->and($parts['Validato automaticamente'])->toBe(1)
         ->and($parts['Validato manualmente'])->toBe(1)
         ->and($parts['Da revisionare'])->toBe(1)
-        ->and($parts->keys()->all())->not->toContain('In quarantena');
+        ->and($parts->keys()->all())->not->toContain('In quarantena')
+        ->and($parts->keys()->all())->not->toContain('In elaborazione');
+});
+
+test('a sub-document not yet extracted counts as in progress, not as needing review', function () {
+    // NeedsReview e' lo stato di creazione: in un documento con piu'
+    // destinatari i segmenti in coda lo hanno prima che l'estrazione giri.
+    SubDocument::factory()->has(ExtractedData::factory(), 'extractedData')->create(['review_status' => ReviewStatus::NeedsReview]);
+    SubDocument::factory()->count(2)->create(['review_status' => ReviewStatus::NeedsReview]);
+
+    $metrics = collect($this->getJson('/api/v1/state')->json('copilot.metrics'))->keyBy('key');
+    $parts = collect($metrics['copilot.review_breakdown']['parts'])->pluck('value', 'label');
+
+    expect($metrics['copilot.needs_review']['value'])->toBe(1)
+        ->and($parts['Da revisionare'])->toBe(1)
+        ->and($parts['In elaborazione'])->toBe(2)
+        ->and($metrics['copilot.review_breakdown']['value'])->toBe(3);
 });
 
 test('the extracted fields metric splits them by their own confidence', function () {
@@ -1358,7 +1374,7 @@ test('the ready documents metric counts validated sub-documents without the quar
     SubDocument::factory()->create(['review_status' => ReviewStatus::AutoValidated]);
     SubDocument::factory()->create(['review_status' => ReviewStatus::ManuallyValidated]);
     SubDocument::factory()->create(['review_status' => ReviewStatus::Quarantined]);
-    SubDocument::factory()->create(['review_status' => ReviewStatus::NeedsReview]);
+    SubDocument::factory()->has(ExtractedData::factory(), 'extractedData')->create(['review_status' => ReviewStatus::NeedsReview]);
 
     $metrics = collect($this->getJson('/api/v1/state')->json('copilot.metrics'))->keyBy('key');
 

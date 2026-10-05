@@ -566,7 +566,10 @@ class MvpStateService
         $autoValidated = $ofTenant(SubDocument::query())->where('review_status', ReviewStatus::AutoValidated)->count();
         $manuallyValidated = $ofTenant(SubDocument::query())->where('review_status', ReviewStatus::ManuallyValidated)->count();
         $validated = $autoValidated + $manuallyValidated;
-        $needsReview = $ofTenant(SubDocument::query())->where('review_status', ReviewStatus::NeedsReview)->count();
+        // NeedsReview e' anche lo stato di creazione: senza dati estratti il
+        // sotto-documento e' ancora in elaborazione, non sotto soglia.
+        $awaitingReview = fn () => $ofTenant(SubDocument::query())->where('review_status', ReviewStatus::NeedsReview)->whereHas('extractedData');
+        $needsReview = $awaitingReview()->count();
         $quarantined = $ofTenant(SubDocument::query())->where('review_status', ReviewStatus::Quarantined)->count();
         $downloaded = $ofTenant(SubDocument::query())->where('send_status', SendStatus::Sent)->count();
 
@@ -668,7 +671,7 @@ class MvpStateService
                     'key' => 'copilot.needs_review',
                     'value' => $needsReview,
                     'label' => 'Da verificare',
-                    'history' => $this->dailySeries($ofTenant(SubDocument::query())->where('review_status', ReviewStatus::NeedsReview)),
+                    'history' => $this->dailySeries($awaitingReview()),
                 ],
                 // Pronti = validati, automaticamente o a mano. Non e' il
                 // complemento di "da verificare": la quarantena e' un terzo
