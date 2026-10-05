@@ -30,9 +30,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
+# Lettura dei pacchetti per i pull dal mirror GHCR; la scrittura serve solo
+# al job stack, che pubblica le immagini.
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 env:
   # secrets non è disponibile in steps[*].if: va mappato su env
@@ -357,6 +359,9 @@ jobs:
   stack:
     name: Stack, security and a11y
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     # Nome di progetto Compose diverso da quello derivato dalla cartella: lo
     # smoke dei log verifica che la raccolta non dipenda dal nome del checkout.
     env:
