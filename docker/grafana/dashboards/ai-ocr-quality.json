@@ -727,6 +727,151 @@
         "type": "loki",
         "uid": "loki"
       }
+    },
+    {
+      "type": "row",
+      "title": "OCR locale (profilo local)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "w": 24,
+        "h": 1,
+        "x": 0,
+        "y": 48
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pagine lette dall'OCR locale (rate 5m)",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 0,
+        "y": 49
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "ops"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (method) (rate(mvp_local_ocr_pages_total[5m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "{{method}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Solo con MVP_EXECUTION_PROFILE=local. text_layer: testo letto dal PDF, senza riconoscimento; tesseract: pagina scansionata riconosciuta in locale."
+    },
+    {
+      "type": "stat",
+      "title": "Durata media OCR locale",
+      "gridPos": {
+        "w": 6,
+        "h": 8,
+        "x": 12,
+        "y": 49
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "s"
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(mvp_local_ocr_duration_seconds_sum[$__range])) / (sum(rate(mvp_local_ocr_duration_seconds_count[$__range])) > 0)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "durata"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Media per documento sulla finestra selezionata. Vuota senza OCR locale nella finestra."
+    },
+    {
+      "type": "stat",
+      "title": "OCR locale falliti",
+      "gridPos": {
+        "w": 6,
+        "h": 8,
+        "x": 18,
+        "y": 49
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(mvp_local_ocr_jobs_failed_total)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "falliti"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Documenti per cui l'OCR locale non è riuscito: strumenti assenti nell'immagine, PDF illeggibile o timeout."
     }
   ]
 }

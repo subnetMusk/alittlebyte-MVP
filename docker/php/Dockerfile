@@ -32,6 +32,9 @@ RUN apt-get update \
     && if [ "$COMPOSER_INSTALL_DEV" = "true" ]; then \
         pecl install xdebug; \
         docker-php-ext-enable xdebug; \
+        # Strumenti dell'OCR del profilo di esecuzione locale (ADR 0014):
+        # solo nell'immagine di sviluppo, quella di produzione resta invariata.
+        apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-ita; \
     fi \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

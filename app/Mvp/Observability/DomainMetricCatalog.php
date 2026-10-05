@@ -181,6 +181,25 @@ final class DomainMetricCatalog
                 'summary',
                 'Textract OCR job duration in seconds.',
             ),
+            // OCR del profilo di esecuzione locale (ADR 0014): stesse forme delle
+            // metriche Textract, nomi propri perche' il servizio e' un altro.
+            new DomainMetricDefinition(
+                'local_ocr_pages_total',
+                'counter',
+                'Pages read by the local OCR adapter, by method.',
+                ['method'],
+                ['method' => ['text_layer', 'tesseract']],
+            ),
+            new DomainMetricDefinition(
+                'local_ocr_jobs_failed_total',
+                'counter',
+                'Local OCR runs that failed.',
+            ),
+            new DomainMetricDefinition(
+                'local_ocr_duration_seconds',
+                'summary',
+                'Local OCR run duration in seconds.',
+            ),
             new DomainMetricDefinition(
                 'ai_outputs_invalid_total',
                 'counter',
