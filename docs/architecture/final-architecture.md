@@ -2,23 +2,96 @@
 
 Questo documento descrive l'architettura runtime effettivamente implementata nella MVP: i
 confini tra i componenti, cosa gira in locale tramite LocalStack e cosa può essere indirizzato
-verso AWS reale, e i principi di qualità che trovano riscontro nel codice.
+verso AWS reale, i limiti rispetto a un ambiente di produzione e i principi di qualità che trovano
+riscontro nel codice. L'organizzazione interna di backend e frontend è in
+[`backend-hexagonal.md`](backend-hexagonal.md) e [`frontend.md`](frontend.md); metriche, log e
+alert in [`../runbooks/observability.md`](../runbooks/observability.md).
 
-## Diagramma dell'architettura
+## Container
 
-![Diagramma E2E dell'architettura runtime e CI](diagrams/final-architecture.drawio.png)
+Ogni freccia corrisponde a una configurazione del repository: `docker-compose.yml`, la
+configurazione dinamica di Traefik, `docker/edge-cdn/` e `docker/nginx/`, le definizioni ASL,
+`docker/otel-collector/config.yml`, `docker/prometheus/prometheus.yml` e `docker/alloy/config.alloy`.
 
-Sorgente editabile: [`diagrams/final-architecture.drawio`](diagrams/final-architecture.drawio)
-(draw.io / diagrams.net, loghi ufficiali incorporati); versione vettoriale in
-[`final-architecture.drawio.svg`](diagrams/final-architecture.drawio.svg). Le aree colorate
-distinguono i piani logici: Frontend, Client/Edge, Applicazione, Config, Dati, Infra locale,
-Orchestrazione (LocalStack), AWS reale, Osservabilità e CI/Qualità: mentre lo stile delle
-frecce distingue i flussi (vedi legenda nel diagramma): sincrono, workflow asincrono,
-errore/DLQ, telemetria, provisioning/infra/CI, build frontend ed encryption. Il diagramma
-include anche il legame di control-plane **IAM → Step Functions** (execution role,
-least-privilege documentata: non applicata da LocalStack in locale) e il registry **GHCR**
-nella pipeline CI (mirror delle immagini base e pubblicazione delle immagini buildate). Gli
-export PNG/SVG vanno rigenerati da draw.io dopo ogni modifica (`drawio -x -f png -s 1.6 -b 24 ...`).
+```mermaid
+flowchart LR
+  user(["Operatore HR"])
+
+  subgraph edge["Edge"]
+    traefik["Traefik<br/>TLS :8443"]
+    cdn["edge-cdn<br/>Nginx, emula la CDN"]
+    nginx["Nginx applicativo"]
+  end
+
+  subgraph appl["Applicazione"]
+    app["app<br/>Laravel su PHP-FPM"]
+    wdoc["queue<br/>worker documenti"]
+    wcom["queue-communications<br/>worker comunicazioni"]
+  end
+
+  subgraph data["Dati e AWS emulato (LocalStack)"]
+    pg[("PostgreSQL")]
+    redis[("Redis")]
+    s3spa[("S3 della SPA")]
+    s3doc[("S3 documenti e copertine<br/>SSE-KMS")]
+    sfn["Step Functions<br/>2 state machine"]
+    sqs["SQS<br/>2 code con DLQ"]
+    cfg["SSM e Secrets Manager"]
+  end
+
+  subgraph aws["AWS reale, opzionale"]
+    bedrock["Bedrock"]
+    textract["Textract"]
+    s3real[("S3 reale")]
+  end
+
+  subgraph obs["Osservabilità"]
+    otel["OTel Collector"]
+    prom["Prometheus"]
+    am["Alertmanager"]
+    graf["Grafana"]
+    loki["Loki"]
+    alloy["Alloy"]
+  end
+
+  user -->|HTTPS| traefik
+  traefik --> cdn
+  cdn -->|asset statici| s3spa
+  cdn -->|/api, /health, /ready| nginx
+  nginx -->|FastCGI| app
+  app --> pg
+  app --> redis
+  app -->|upload, anteprima| s3doc
+  app -->|StartExecution| sfn
+  sfn -->|sendMessage.waitForTaskToken| sqs
+  sqs --> wdoc
+  sqs --> wcom
+  wdoc -->|callback e heartbeat| sfn
+  wcom -->|callback e heartbeat| sfn
+  wdoc --> pg
+  wcom --> pg
+  wdoc --> s3doc
+  wcom --> s3doc
+  app -.->|configurazione all'avvio| cfg
+  wdoc -->|OCR| textract
+  wdoc -->|split ed estrazione| bedrock
+  wcom -->|testo e copertina| bedrock
+  wdoc -.->|con MVP_DOCUMENT_DISK=real_s3| s3real
+  textract -.-> s3real
+  traefik -->|dashboard per hostname| graf
+  otel -->|scrape :8081/internal/metrics| nginx
+  otel -->|scrape :9100| traefik
+  prom -->|scrape :9464| otel
+  prom --> am
+  graf --> prom
+  graf --> loki
+  alloy -->|log dei container etichettati| loki
+```
+
+Le linee tratteggiate sono percorsi condizionali. Il worker ricava la configurazione allo stesso modo
+di `app`; Traefik instrada per hostname anche Prometheus e Alertmanager, dietro basic auth. I
+sorgenti draw.io in [`diagrams/`](diagrams/) precedono la revisione del fork e mostrano ancora
+flussi rimossi, come le trace verso Tempo: vanno rifatti e non sono più incorporati nei documenti.
 
 ## Confine di runtime
 
@@ -27,7 +100,7 @@ export PNG/SVG vanno rigenerati da draw.io dopo ogni modifica (`drawio -x -f png
 | Frontend | SPA Angular/TypeScript in `apps/frontend` | Generazione assistita con avanzamento in tempo reale, upload, stato di elaborazione, revisione, flussi di anteprima/eliminazione. |
 | Edge | Traefik (TLS), emulatore CDN locale (Nginx) e Nginx applicativo | HTTPS locale, serving della SPA da S3 LocalStack, proxy API, blocco delle superfici `/admin`. |
 | API | API JSON Laravel in `app/Http` | Validazione, controlli di tenant, audit event, avvio del workflow. |
-| Workflow | Due state machine Step Functions e due code SQS (LocalStack) | Orchestrazione production-like con callback task token, end-to-end; pipeline documentale e pipeline comunicazioni isolate fra loro. |
+| Workflow | Due state machine Step Functions e due code SQS con DLQ (LocalStack) | Orchestrazione con callback a task token, heartbeat e retry; pipeline documentale e pipeline delle comunicazioni isolate fra loro. |
 | Worker | `php artisan mvp:workflow:consume --queue=documents|communications` | Un worker per pipeline: ricezione SQS, esecuzione dei task, `SendTaskSuccess`/`SendTaskFailure`, `SendTaskHeartbeat`. |
 | OCR | `App\Mvp\Documents\Adapters\Outbound\Ocr\TextractOcrAdapter` | Integrazione Textract reale, disabilitata di default nelle esecuzioni locali/CI standard. |
 | AI | `App\Mvp\Ai\BedrockService` | Integrazione Bedrock reale per split/estrazione, generazione del testo e delle copertine. |
@@ -58,12 +131,6 @@ non è l'origine primaria della SPA nel flusso default. L'emulazione non sostitu
 reale: in produzione il ruolo sarebbe ricoperto da AWS CloudFront (bucket privato + OAC,
 invalidation, edge propagation).
 
-### Dettaglio edge/runtime/API
-
-![Dettaglio edge, runtime e backend API](diagrams/04_edge_runtime_backend_api.drawio.png)
-
-<sub>Sorgente editabile: [`04_edge_runtime_backend_api.drawio`](diagrams/04_edge_runtime_backend_api.drawio), export [`SVG`](diagrams/04_edge_runtime_backend_api.drawio.svg).</sub>
-
 Alcune primitive sono provisionate ma **non esercitate** dall'applicativo: il bus EventBridge
 (con rule e target verso SQS) e l'identità SES esistono in Terraform, ma nessun codice pubblica
 eventi o invia email. Le policy IAM (es. execution role di Step Functions) sono definite come
@@ -89,13 +156,44 @@ alla SPA: non devono puntare a bucket reali e non governano il caricamento docum
 
 I test e la CI standard non chiamano S3, Textract o Bedrock reali.
 
+## Percorso verso AWS reale
+
+Il repository non crea risorse AWS reali: Terraform esiste solo per LocalStack
+(`infra/localstack`). Prima di scrivere un Terraform per AWS servono decisioni che oggi mancano:
+ruoli IAM e confini fra account, remote state con lock, gestione e rotazione dei segreti, e chi
+possiede il deploy. A quel punto il modello di LocalStack è la base da cui estrarre moduli
+riutilizzabili, mantenendo documentate in `infra/localstack` le differenze che valgono solo in
+locale.
+
+La traduzione dei componenti sarebbe diretta: PostgreSQL su RDS, Redis su ElastiCache, SQS, Step
+Functions, S3 con KMS, SSM e Secrets Manager nativi, app e worker su un servizio di container (ECS o
+EKS), SPA da un bucket privato dietro CloudFront con OAC. I permessi necessari sono nella
+[matrice IAM](../security/iam-and-aws-permissions.md).
+
+## Limiti rispetto alla produzione
+
+| Area | Stato nella MVP | Intervento per la produzione |
+| --- | --- | --- |
+| Identità | Simulata: identità da configurazione o da header fidati ([`auth-boundary.md`](../security/auth-boundary.md)) | IdP reale con OIDC e token verificati dall'applicazione o all'edge |
+| Segreti | Default locali come fallback del compose | Nessun default fuori dal locale; rotazione con Secrets Manager e invalidazione della cache di configurazione |
+| Upload | Nessuna scansione antivirus né CDR sui PDF | Scansione prima della persistenza |
+| Isolamento dei tenant | Filtri applicativi, senza Row-Level Security ([`postgres-rls-assessment.md`](postgres-rls-assessment.md)) | RLS PostgreSQL su `tenant_id` |
+| Backup | Dump manuali (`make backup-local`), senza point-in-time recovery | Backup automatici con PITR e restore provato |
+| Worker | Una replica per pipeline, scalabile a mano con `make workers` | Repliche multiple con scaling sulla profondità della coda |
+| Dashboard interne | Basic auth statica davanti a Prometheus e Alertmanager | Accesso con OIDC o forward-auth |
+| Alerting | Soglie statiche, receiver dimostrativo | SLO con alert sul burn rate e receiver reali |
+| Metriche applicative | Archivio su file JSON con lock condiviso dai container | Storage condiviso adatto a più repliche |
+| Tracing | Assente: la correlazione passa dal correlation ID nei log | SDK OpenTelemetry con propagazione del contesto attraverso SQS |
+| Retention | Loki 7 giorni, Prometheus 15; nessuna policy per testo OCR e prompt | Policy di retention dei dati applicativi |
+| CSP | Statica in Nginx | Gestione centralizzata, con nonce o hash se servissero script dinamici |
+
 ## Principi di qualità implementati
 
 | Principio di riferimento | Implementazione concreta |
 | --- | --- |
 | AWS Well-Architected: operational excellence | Avvio ripetibile via Docker/Terraform, endpoint `/health` e `/ready`, target `make verify*`. |
 | AWS Well-Architected: reliability | Retry/catch espliciti in Step Functions, heartbeat per task, DLQ SQS, tabella di workflow idempotente. |
-| AWS Well-Architected: security | Nessuna UI di amministrazione runtime, nessun segreto reale committato, header di sicurezza e CSP in nginx, matrice IAM a privilegio minimo documentata. |
+| AWS Well-Architected: security | Nessuna UI di amministrazione runtime, nessun segreto reale committato (gitleaks sull'intera history in CI), header di sicurezza e CSP in Nginx, [matrice IAM a privilegio minimo](../security/iam-and-aws-permissions.md) documentata. |
 | Baseline OWASP ASVS/API | Validazione upload server-side, controlli di ownership per tenant, rate limit, confine di autenticazione strutturato. |
 | Google SRE: monitoring | Metriche API golden-signal, metriche di entrambe le pipeline, alert code/DLQ per dominio con runbook. |
 | Modello OpenTelemetry | Il Collector è il gateway delle metriche: raschia l'exporter applicativo e Traefik e le espone a Prometheus. Il tracing distribuito non è implementato. |
