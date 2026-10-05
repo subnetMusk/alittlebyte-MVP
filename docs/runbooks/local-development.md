@@ -199,11 +199,18 @@ pannelli nella dashboard `AI and OCR Quality`, sezione "OCR locale".
 **ComfyUI.** `comfyui` è un provider generico: esegue un workflow in formato API letto da file, e il
 codice ne sostituisce solo i segnaposto `%prompt%` (obbligatorio), `%negative_prompt%`, `%seed%`,
 `%width%`, `%height%` e `%filename_prefix%`. Modelli, passi, sampler e CFG restano nel grafo. Il seed
-deriva dal contenuto, quindi la stessa richiesta produce la stessa copertina. Le immagini restano
-anche nella cartella di output di ComfyUI, sotto `alittlebyte/`.
+deriva dal contenuto, quindi la stessa richiesta produce la stessa copertina.
 
-Il workflow versionato, e predefinito, è `resources/ai/comfyui/z-image-turbo.json`: Z-Image-Turbo
-in GGUF, esportato da ComfyUI con «Esporta (API)». In ComfyUI richiede:
+Il workflow predefinito è `resources/ai/comfyui/sdxl-lightning.json`, esportato da ComfyUI con
+«Esporta (API)»: SDXL Lightning a 4 passi, CFG 1, sampler `euler` con scheduler `sgm_uniform`, con il
+checkpoint `sdxl_lightning_4step.safetensors`. Ha un prompt negativo, che però con CFG 1 non ha
+effetto. Su una RTX 2070 Super da 8 GB una copertina 1280×720 richiede circa 15 secondi, caricamento
+del modello compreso. Le immagini restano nella cartella temporanea di ComfyUI, svuotata al riavvio.
+
+Il secondo workflow versionato, `z-image-turbo.json`, usa Z-Image-Turbo in GGUF: immagini migliori,
+ma un fabbisogno di memoria che una macchina da 16 GB non regge, fino a esaurire la RAM del sistema.
+Si sceglie con `COMFYUI_WORKFLOW=z-image-turbo.json`, salva le immagini nell'output di ComfyUI sotto
+`alittlebyte/` e richiede:
 
 | Cosa | Valore |
 | --- | --- |
@@ -212,13 +219,11 @@ in GGUF, esportato da ComfyUI con «Esporta (API)». In ComfyUI richiede:
 | Text encoder | `Qwen3-4B-Q4_K_S.gguf`, tipo `lumina2` |
 | VAE | `ae.safetensors` |
 
-Il grafo usa 8 passi, CFG 1, sampler `res_multistep` con scheduler `simple`; la copertina è
-1280×720. Su una RTX 2070 Super da 8 GB un'immagine 1024×1024 richiede circa tre minuti.
+Il grafo usa 8 passi, CFG 1, sampler `res_multistep` con scheduler `simple`. Con memoria sufficiente
+un'immagine 1024×1024 richiede circa tre minuti.
 
-In alternativa `COMFYUI_WORKFLOW=sdxl-lightning.json` usa il secondo workflow versionato, SDXL
-Lightning a 4 passi con il checkpoint `sdxl_lightning_4step.safetensors`: più leggero, e con un prompt
-negativo che però con CFG 1, il valore del workflow, non ha effetto. `COMFYUI_WORKFLOW` accetta il
-nome di un workflow versionato in `resources/ai/comfyui/` oppure il percorso di un file nell'immagine.
+`COMFYUI_WORKFLOW` accetta il nome di un workflow versionato in `resources/ai/comfyui/` oppure il
+percorso di un file nell'immagine.
 Per un altro modello si esporta un altro workflow in formato API, si sostituiscono i valori con i
 segnaposto e lo si indica con `COMFYUI_WORKFLOW`.
 
@@ -237,8 +242,10 @@ prompt scaduto viene tolto dalla coda di ComfyUI o interrotto, così non continu
 memoria.
 
 Ollama, ComfyUI e lo stack si contendono memoria e GPU. Su una macchina da 16 GB con lo stack completo
-avviato la generazione ha superato il limite, e la copertina è risultata degradata: per l'uso normale
-resta consigliato `mock`. Il campionamento in sé è breve; il tempo va nel caricamento dei modelli
+avviato, Z-Image-Turbo ha superato il limite e la copertina è risultata degradata: per l'uso normale
+resta consigliato `mock`. Con SDXL Lightning e `LOCAL_LLM_KEEP_ALIVE=0`, sulla stessa macchina con app,
+worker e servizi AWS emulati ma senza lo stack di osservabilità, una comunicazione completa ha
+richiesto 106 secondi, di cui 14 per la copertina. Il campionamento in sé è breve; il tempo va nel caricamento dei modelli
 quando la RAM è esaurita. Due regolazioni riducono la contesa:
 
 - `LOCAL_LLM_KEEP_ALIVE=0` fa scaricare a Ollama il modello testuale subito dopo ogni risposta, e

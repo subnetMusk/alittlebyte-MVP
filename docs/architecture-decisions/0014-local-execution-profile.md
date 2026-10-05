@@ -42,7 +42,8 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
 - **Copertina con una strategia di adapter.** `LOCAL_COVER_PROVIDER=mock` (default) produce una
   copertina deterministica, con palette per tono e motivo per stile; `comfyui` la genera con un server
   ComfyUI locale eseguendo un workflow in formato API, modelli compresi, che è configurazione di
-  deployment: il repository ne versiona uno per Z-Image-Turbo in GGUF. Il profilo locale funziona per
+  deployment: il repository ne versiona due, SDXL Lightning, il predefinito, e Z-Image-Turbo in GGUF,
+  di qualità migliore ma troppo pesante per una macchina da 16 GB. Il profilo locale funziona per
   intero anche senza ComfyUI.
 - **Nessun ripiego fra provider.** Un profilo o un provider di copertina non validi fermano l'avvio;
   un errore di Ollama fa fallire la generazione come un errore di Bedrock
@@ -92,7 +93,8 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
 - Adapter: `app/Mvp/Documents/Adapters/Outbound/Ai/OllamaDocumentAiAdapter.php`,
   `app/Mvp/Documents/Adapters/Outbound/Ocr/LocalPdfOcrAdapter.php`,
   `app/Mvp/Communications/Adapters/Outbound/Ai/LocalCommunicationAiAdapter.php`.
-- Workflow ComfyUI versionato: `resources/ai/comfyui/z-image-turbo.json`.
+- Workflow ComfyUI versionati: `resources/ai/comfyui/sdxl-lightning.json` (predefinito) e
+  `z-image-turbo.json`.
 - Test: `tests/Unit/ExecutionProfileBindingTest.php`, `ExecutionProfileBoundaryTest.php`,
   `TextModelProviderContractTest.php`, `OllamaServiceTest.php`, `LocalPdfOcrAdapterTest.php`,
   `CoverImageGeneratorTest.php`.
