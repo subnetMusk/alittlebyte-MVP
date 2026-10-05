@@ -10,7 +10,7 @@ groups:
         annotations:
           summary: "Prometheus target down"
           description: "{{ $labels.job }} / {{ $labels.instance }} is down."
-          runbook: "https://github.com/aLittleByte-19/MVP/blob/main/docs/runbooks/observability.md"
+          runbook: "https://github.com/subnetMusk/alittlebyte-MVP/blob/main/docs/runbooks/observability.md"
 
       - alert: APIHighErrorRate
         # Niente clamp_min sul denominatore: clampando a 1 req/s il rapporto
@@ -31,7 +31,7 @@ groups:
         annotations:
           summary: "High API 5xx error ratio"
           description: "The HTTP 5xx ratio has been above 5% for 10 minutes."
-          runbook: "https://github.com/aLittleByte-19/MVP/blob/main/docs/runbooks/observability.md"
+          runbook: "https://github.com/subnetMusk/alittlebyte-MVP/blob/main/docs/runbooks/observability.md"
 
       - alert: APIHighLatencyP95
         expr: |
@@ -46,4 +46,4 @@ groups:
         annotations:
           summary: "High API p95 latency"
           description: "The HTTP p95 latency has been above 1 second for 10 minutes."
-          runbook: "https://github.com/aLittleByte-19/MVP/blob/main/docs/runbooks/observability.md"
+          runbook: "https://github.com/subnetMusk/alittlebyte-MVP/blob/main/docs/runbooks/observability.md"
