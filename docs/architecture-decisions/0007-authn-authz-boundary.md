@@ -52,4 +52,4 @@ le azioni non disponibili per UX, ma non deve mai essere la fonte di verità per
 - [`0001-frontend-spa.md`](0001-frontend-spa.md)
 - [`0002-laravel-api-json.md`](0002-laravel-api-json.md)
 - [`../security/auth-boundary.md`](../security/auth-boundary.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§13)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§13)

@@ -112,4 +112,4 @@ dall'ADR 0005: l'output non è un dato sostitutivo, è lo stesso identico docume
 - [`0005-no-automatic-fallbacks.md`](0005-no-automatic-fallbacks.md)
 - [`0006-observability-and-audit.md`](0006-observability-and-audit.md)
 - [`../runbooks/communication-pipeline.md`](../runbooks/communication-pipeline.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§6.1, §9)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§6.1, §9)

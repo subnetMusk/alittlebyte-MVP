@@ -57,4 +57,4 @@ vive nell'infrastruttura (LocalStack), non in branch condizionali del codice app
 
 - [`0003-sqs-instead-of-redis-queue.md`](0003-sqs-instead-of-redis-queue.md)
 - [`0006-observability-and-audit.md`](0006-observability-and-audit.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§10)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§10)

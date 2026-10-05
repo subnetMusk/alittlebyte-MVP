@@ -1,5 +1,10 @@
 # Panoramica implementativa dell'applicativo
 
+> **Documento archiviato.** Fotografia della codebase al 15/08/2026, prodotta per la valutazione
+> del corso e non più aggiornata. Alcune parti non descrivono più il runtime: per esempio Tempo, le
+> trace OTLP e il conteggio degli alert. Lo stato corrente è in
+> [`../architecture/final-architecture.md`](../architecture/final-architecture.md) e nei runbook.
+
 > Documento aggiornato tramite analisi diretta della codebase.
 > Branch analizzato: integration/develop_merge.
 > Ultimo aggiornamento: 2026-08-15.
@@ -29,7 +34,7 @@ L'analisi si basa sullo **stato attuale del codice**: route, controller, service
 | Area | Path | Responsabilità |
 |---|---|---|
 | Backend applicativo | `app/` | Controller HTTP divisi per area in `Http/Controllers/Api/V1/` (bozze, stream, copertine, export, rating; documenti, revisione, anteprima, messaggio di invio) con le guardie condivise su attore e tenant in `Http/Controllers/Api/V1/Concerns/`; middleware, model, console command |
-| Domini MVP | `app/Mvp/` | `Documents/` (Co-Pilot) e `Communications/` (AI Assistant) seguono l'architettura esagonale (ports & adapters: `Domain/`, `Application/UseCases/`, `Adapters/{Primary,Outbound}/` — [ADR 0010](architecture-decisions/0010-hexagonal-architecture-documents-communications.md)); `Ai/` (Bedrock), `Workflow/` (infrastruttura di orchestrazione comune, include la porta condivisa `WorkflowEnginePort`), `Identity/`, `Audit/`, `Observability/`, `Support/` restano service layer per dominio, fuori dal perimetro esagonale per scelta esplicita dell'ADR |
+| Domini MVP | `app/Mvp/` | `Documents/` (Co-Pilot) e `Communications/` (AI Assistant) seguono l'architettura esagonale (ports & adapters: `Domain/`, `Application/UseCases/`, `Adapters/{Primary,Outbound}/` — [ADR 0010](../architecture-decisions/0010-hexagonal-architecture-documents-communications.md)); `Ai/` (Bedrock), `Workflow/` (infrastruttura di orchestrazione comune, include la porta condivisa `WorkflowEnginePort`), `Identity/`, `Audit/`, `Observability/`, `Support/` restano service layer per dominio, fuori dal perimetro esagonale per scelta esplicita dell'ADR |
 | Route | `routes/api.php`, `routes/web.php` | API v1 + endpoint di sistema |
 | Schema dati | `database/migrations/` | 7 tabelle di dominio + indici/FK |
 | Frontend SPA | `apps/frontend/` | Angular + TypeScript, client API Angular generato |
@@ -131,7 +136,7 @@ Confini di responsabilità: Traefik termina TLS e applica auth alle dashboard; l
 ### Angular + TypeScript (frontend)
 
 **Dove**: `apps/frontend/package.json`, `apps/frontend/angular.json`, `apps/frontend/src/app/`.
-**Ruolo**: SPA a tre viste (`overview`, `assistant`, `copilot`) con Angular Router, shell operativa, pannelli per generazione comunicazioni, upload documenti, storici, revisione e metriche. Il linguaggio visivo — token, primitivi condivisi, glifi di stato, forme delle schede metrica — è quello dell'[ADR 0012](architecture-decisions/0012-frontend-design-system-and-ui-language.md); i ViewModel puri e il client SSE quello dell'[ADR 0011](architecture-decisions/0011-frontend-presentation-model-and-sse-client.md).
+**Ruolo**: SPA a tre viste (`overview`, `assistant`, `copilot`) con Angular Router, shell operativa, pannelli per generazione comunicazioni, upload documenti, storici, revisione e metriche. Il linguaggio visivo — token, primitivi condivisi, glifi di stato, forme delle schede metrica — è quello dell'[ADR 0012](../architecture-decisions/0012-frontend-design-system-and-ui-language.md); i ViewModel puri e il client SSE quello dell'[ADR 0011](../architecture-decisions/0011-frontend-presentation-model-and-sse-client.md).
 **Motivazione**: allineamento al Capitolato, build statica production-like, deep link top-level e client API generato per HttpClient.
 **Valutazione**: stato condiviso via store Angular a signal (`MvpStateStore`), servizi feature per mutazioni e SSE, stati loading/error/empty espliciti, dark mode via token CSS (`src/styles/tokens.css`, `data-mvp-theme` + `prefers-color-scheme`), request/correlation id propagati con interceptor. La build di produzione disabilita l'inline critical CSS per restare compatibile con CSP severa.
 
@@ -389,7 +394,7 @@ predisposizione**: `CommunicationController::save()` esegue la transizione `draf
 modificabile e rigenerabile come una draft, finché non viene scartata
 (`assertCommunicationIsEditable()`/`assertCommunicationCanRegenerate()` bloccano solo lo stato
 `discarded`, non `approved`) — il salvataggio decide cosa compare nello storico, non blocca il
-contenuto. Il modello dei permessi resta quello descritto in [`mvp-scope.md`](mvp-scope.md): non
+contenuto. Il modello dei permessi resta quello descritto in [`mvp-scope.md`](../mvp-scope.md): non
 c'è un flusso di approvazione multi-ruolo, è l'operatore stesso a decidere cosa archiviare.
 
 **Preferiti (UC-21/UC-22, implementato)**: `POST` e `DELETE /api/v1/communications/{communication}/favorite`
@@ -478,9 +483,9 @@ Gli stati applicativi sono enum PHP con cast Eloquent (`ProcessingStatus`, `Send
 
 **Punti da rafforzare in ottica production**: multi-tenancy garantita solo da `where tenant_id` applicativi (nessun Postgres Row-Level Security); nessuna strategia di migrazione dati/rollback documentata; niente backup/PITR (accettabile in MVP, bloccante in produzione); `ocr_text` longText cresce senza retention.
 
-![Dati, storage e protezione](architecture/diagrams/05_dati_storage_protezione.drawio.png)
+![Dati, storage e protezione](../architecture/diagrams/05_dati_storage_protezione.drawio.png)
 
-<sub>Sorgente editabile: [`05_dati_storage_protezione.drawio`](architecture/diagrams/05_dati_storage_protezione.drawio), export [`SVG`](architecture/diagrams/05_dati_storage_protezione.drawio.svg).</sub>
+<sub>Sorgente editabile: [`05_dati_storage_protezione.drawio`](../architecture/diagrams/05_dati_storage_protezione.drawio), export [`SVG`](../architecture/diagrams/05_dati_storage_protezione.drawio.svg).</sub>
 
 ---
 
@@ -546,7 +551,7 @@ Coperto in §5; valutazione sintetica:
 - **Stile**: REST pragmatico sotto `/api/v1` con naming coerente e versioning nel path; risposte JSON uniformi; errori con `code` macchina-leggibile + `requestId`/`correlationId` (correlazione propagata dal middleware `CorrelateRequests`).
 - **Validazione**: sempre via FormRequest, whitelist chiuse per valori enumerabili.
 - **Middleware chain**: `mvp.identity` → `mvp.authorize` → `throttle` (60/min lettura, 20/min operazioni costose: generazione AI e upload).
-- **Service layer / esagonale**: `Documents` e `Communications` seguono ports & adapters ([ADR 0010](architecture-decisions/0010-hexagonal-architecture-documents-communications.md)); gli altri domini vivono in `app/Mvp/{Ai,Workflow,Identity,Audit,Observability,Support}` come service layer per dominio; confini netti, dipendenze inject-ate, nessun helper globale.
+- **Service layer / esagonale**: `Documents` e `Communications` seguono ports & adapters ([ADR 0010](../architecture-decisions/0010-hexagonal-architecture-documents-communications.md)); gli altri domini vivono in `app/Mvp/{Ai,Workflow,Identity,Audit,Observability,Support}` come service layer per dominio; confini netti, dipendenze inject-ate, nessun helper globale.
 - **SSE**: gli stream `documents/{id}/stream` e `communications/{id}/stream` hanno timeout allineati alla somma dei `TimeoutSeconds` ASL (1800s documenti, 900s comunicazioni). Allo scadere emettono `still_running` invece di `error`, perché la pipeline può ancora concludere. La SPA usa `SseClient` (fetch + header di correlazione) e distingue l'evento nominato `error` dal drop di connessione.
 - **Da rifattorizzare/completare**: il ciclo della bozza comunicazione è esposto dalle rotte di aggiornamento, rigenerazione, scarto ed eliminazione descritte in §6.5. Restano migliorabili il throttle, che non dispone di quote differenziate per tenant, e la verifica completa degli stream SSE attraverso il proxy.
 

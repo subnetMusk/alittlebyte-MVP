@@ -47,4 +47,4 @@ ma non deve mai essere la fonte di verità per il controllo degli accessi.
 
 - [`0002-laravel-api-json.md`](0002-laravel-api-json.md)
 - [`0007-authn-authz-boundary.md`](0007-authn-authz-boundary.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§5, §11)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§5, §11)

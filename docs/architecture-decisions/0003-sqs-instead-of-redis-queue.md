@@ -54,4 +54,4 @@ Redis non deve essere il backend di coda primario e Horizon non va introdotto.
 - [`0004-localstack-terraform.md`](0004-localstack-terraform.md)
 - [`0005-no-automatic-fallbacks.md`](0005-no-automatic-fallbacks.md)
 - [`../runbooks/document-pipeline.md`](../runbooks/document-pipeline.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§9)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§9)

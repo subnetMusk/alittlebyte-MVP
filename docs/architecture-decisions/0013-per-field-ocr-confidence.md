@@ -214,7 +214,7 @@ cercarli fra le righe non direbbe nulla sulla loro affidabilità.
   nel dominio come logica pura, e `Observability` fuori dal perimetro ports & adapters.
 - [ADR 0005](0005-no-automatic-fallbacks.md) — nessun fallback silenzioso: il ripiego sulla media di
   pagina è dichiarato e circoscritto ai campi non rintracciabili, non un fallback di servizio.
-- `docs/architecture/capitolato-traceability.md` §12 e §13 — soglia di confidenza e
+- `docs/archive/capitolato-traceability.md` §12 e §13 (archiviato) — soglia di confidenza e
   human-in-the-loop; da aggiornare con la soglia dedicata al codice fiscale.
 - `docs/mvp-scope.md` — la descrizione della confidenza va aggiornata: non è più «leggibilità OCR
   ponderata sulla completezza», ma «confidenza del campo chiave più debole».

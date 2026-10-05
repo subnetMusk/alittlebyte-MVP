@@ -45,4 +45,4 @@ osservabilità containerizzati.
 
 - [`0001-frontend-spa.md`](0001-frontend-spa.md)
 - [`0007-authn-authz-boundary.md`](0007-authn-authz-boundary.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§12)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§12)

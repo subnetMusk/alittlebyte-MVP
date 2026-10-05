@@ -5,7 +5,7 @@ Application Security Verification Standard. È una **baseline MVP** con **alline
 **non costituisce una review formale** né una dichiarazione di conformità ASVS completa.
 
 Per il confine di autenticazione/autorizzazione vedi [`auth-boundary.md`](auth-boundary.md);
-per le evidenze implementative di dettaglio [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md).
+per le evidenze implementative di dettaglio [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md).
 
 | Area | Baseline implementata nella MVP | Evidenza nella codebase | Rischio residuo | Lavoro production-like |
 | --- | --- | --- | --- | --- |

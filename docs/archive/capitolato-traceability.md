@@ -1,5 +1,9 @@
 # Tracciabilità delle scelte tecnologiche rispetto al Capitolato
 
+> **Documento archiviato.** Materiale prodotto per la valutazione del corso: collega le scelte
+> tecniche ai requisiti del Capitolato C5 proposto da Eggon. Non è più aggiornato; il razionale
+> corrente delle scelte è negli ADR.
+
 Questo documento raccoglie le scelte tecnologiche e architetturali della MVP e, per ciascuna,
 il razionale ingegneristico che la motiva insieme al riscontro che trova nel Capitolato C5
 (`[NEXUM] BRD-FASE02-2025`, v. 12). Le scelte nascono da criteri di progettazione -
