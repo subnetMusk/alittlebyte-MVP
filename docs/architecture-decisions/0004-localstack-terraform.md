@@ -20,6 +20,12 @@ AWS risiedono sotto `infra/modules`.
 L'applicazione parla con i servizi AWS, reali o emulati, **senza cambiare codice**: cambiano solo
 endpoint e credenziali (vedi [ADR 0005](0005-no-automatic-fallbacks.md)).
 
+## Aggiornamento (2026-10-05)
+
+`infra/modules` e `infra/aws` non hanno mai contenuto moduli né risorse, solo due README segnaposto, e
+sono stati rimossi. Il Terraform resta solo in `infra/localstack`; le condizioni per scriverne uno per
+AWS reale sono in [`../architecture/final-architecture.md`](../architecture/final-architecture.md#percorso-verso-aws-reale).
+
 ## Consequences
 
 - Il bootstrap locale diventa ripetibile e revisionabile.
@@ -53,4 +59,4 @@ endpoint e credenziali (vedi [ADR 0005](0005-no-automatic-fallbacks.md)).
 
 - [`0003-sqs-instead-of-redis-queue.md`](0003-sqs-instead-of-redis-queue.md)
 - [`../runbooks/local-development.md`](../runbooks/local-development.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§5)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§5)

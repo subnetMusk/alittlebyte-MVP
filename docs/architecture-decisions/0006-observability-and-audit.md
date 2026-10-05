@@ -1,6 +1,6 @@
 # ADR 0006: Osservabilità e audit trail
 
-Status: Accepted, implemented baseline
+Status: Accepted, implementata per metriche, audit e log; la parte sulle trace è superata (vedi Aggiornamento)
 Date: 2026-06-08
 
 ## Context
@@ -37,6 +37,16 @@ Alloy.
   fra ciò che si emette e ciò che si interroga diventa visibile.
 - Un fallimento di raccolta degrada la singola famiglia di metriche, non l'intera esposizione.
 
+## Aggiornamento (2026-10-05)
+
+La parte della decisione sulle trace non è mai stata realizzata: l'applicazione non include un SDK
+OpenTelemetry, quindi nessun componente produceva trace e Tempo restava vuoto. Tempo, il receiver
+OTLP e le pipeline `traces` e `logs` del Collector sono stati rimossi. Il Collector resta il gateway
+delle metriche. I log dei container arrivano a Loki tramite Alloy, che li scopre per label
+(`com.alittlebyte.observability.logs`) invece che per nome del progetto Compose. La correlazione fra
+componenti passa dal correlation ID nei log, non da un contesto W3C Trace Context. Un tracing
+distribuito richiederebbe un nuovo ADR.
+
 ## Alternatives considered
 
 - **Scrape diretto di ogni servizio da Prometheus**: scartato a favore di un Collector unico, che
@@ -55,8 +65,9 @@ Alloy.
   struttura segue i golden signal per l'API, l'imbuto di pipeline per i due domini e il metodo
   USE per le code (vedi `../runbooks/observability.md`).
 - Config osservabilità: `docker/otel-collector/`, `docker/prometheus/{prometheus.yml,rules/}`,
-  `docker/tempo/`, `docker/loki/`, `docker/alloy/`, `docker/grafana/` (6 dashboard, 16 alert rule).
-- Validazione config in CI: `make observability-config` (`promtool`, `otelcol validate`).
+  `docker/alertmanager/`, `docker/loki/`, `docker/alloy/`, `docker/grafana/` (6 dashboard, 16 alert rule).
+- Validazione config in CI: `make observability-config` (`otelcol validate`, `promtool`, `amtool`,
+  `loki -verify-config`, `alloy fmt --test`), più uno smoke che interroga Loki a stack avviato.
 - Contratto metriche: `tests/Feature/ObservabilityContractTest.php` più l'helper
   `tests/Support/MetricsContract.php`, eseguiti da `make verify-backend`.
 
@@ -70,4 +81,4 @@ Alloy.
 
 - [`0005-no-automatic-fallbacks.md`](0005-no-automatic-fallbacks.md)
 - [`../runbooks/observability.md`](../runbooks/observability.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§14)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§14, archiviato)
