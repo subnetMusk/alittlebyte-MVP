@@ -87,6 +87,11 @@ return [
         'model' => env('LOCAL_LLM_MODEL', 'qwen3.5:9b'),
         // Il primo caricamento del modello in memoria puo' superare il minuto.
         'timeout_seconds' => (int) env('LOCAL_LLM_TIMEOUT_SECONDS', 300),
+        // Quanto Ollama tiene il modello in memoria dopo una risposta: una
+        // durata come "5m" o dei secondi, 0 lo scarica subito, vuoto lascia il
+        // default di Ollama. Con la copertina da ComfyUI su una GPU da 8 GB, 0
+        // libera la VRAM per la generazione dell'immagine.
+        'keep_alive' => env('LOCAL_LLM_KEEP_ALIVE'),
     ],
 
     'local_ocr' => [
@@ -98,9 +103,13 @@ return [
         'provider' => env('LOCAL_COVER_PROVIDER', 'mock'),
         'comfyui' => [
             'base_url' => env('COMFYUI_BASE_URL', 'http://host.docker.internal:8188'),
-            // Workflow in formato API, modelli compresi; quello versionato usa
-            // Z-Image-Turbo in GGUF.
-            'workflow' => env('COMFYUI_WORKFLOW') ?: resource_path('ai/comfyui/z-image-turbo.json'),
+            // Workflow in formato API, modelli compresi: un nome di file indica
+            // uno di quelli versionati in resources/ai/comfyui, un percorso un
+            // file qualsiasi dell'immagine. Il predefinito usa Z-Image-Turbo in
+            // GGUF.
+            'workflow' => str_contains((string) env('COMFYUI_WORKFLOW', ''), '/')
+                ? env('COMFYUI_WORKFLOW')
+                : resource_path('ai/comfyui/'.(env('COMFYUI_WORKFLOW') ?: 'z-image-turbo.json')),
             // Con il workflow versionato un'immagine 1024x1024 ha richiesto circa
             // tre minuti su una GPU da 8 GB. Il limite resta sotto il timeout
             // del task GenerateCover dell'ASL (300 s, con un retry su timeout),

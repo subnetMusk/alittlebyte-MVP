@@ -15,10 +15,15 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
-function versionedComfyUiWorkflow(): string
+function versionedComfyUiWorkflow(string $name = 'z-image-turbo.json'): string
 {
-    return resource_path('ai/comfyui/z-image-turbo.json');
+    return resource_path("ai/comfyui/{$name}");
 }
+
+dataset('versioned ComfyUI workflows', [
+    'z-image-turbo' => ['z-image-turbo.json', ['%prompt%', '%seed%', '%width%', '%height%', '%filename_prefix%']],
+    'sdxl-lightning' => ['sdxl-lightning.json', ['%prompt%', '%negative_prompt%', '%seed%', '%width%', '%height%']],
+]);
 
 function makeComfyUiGenerator(?string $workflowPath = null, int $timeoutSeconds = 5, string $baseUrl = 'http://comfyui.test:8188'): ComfyUiCoverGenerator
 {
@@ -82,8 +87,8 @@ test('the deterministic cover has a palette for every tone and a pattern for eve
         ->and(array_keys($patterns))->toEqualCanonicalizing(GenerateCommunicationRequest::STYLES);
 });
 
-test('the versioned workflow is a portable API graph with one placeholder per dynamic input', function () {
-    $contents = (string) file_get_contents(versionedComfyUiWorkflow());
+test('the versioned workflow is a portable API graph with one placeholder per dynamic input', function (string $name, array $placeholders) {
+    $contents = (string) file_get_contents(versionedComfyUiWorkflow($name));
     $workflow = json_decode($contents, true);
 
     expect($workflow)->toBeArray()->not->toBeEmpty();
@@ -92,31 +97,32 @@ test('the versioned workflow is a portable API graph with one placeholder per dy
         expect($node)->toHaveKeys(['class_type', 'inputs']);
     }
 
-    foreach (['%prompt%', '%seed%', '%width%', '%height%', '%filename_prefix%'] as $placeholder) {
+    foreach ($placeholders as $placeholder) {
         expect(substr_count($contents, "\"{$placeholder}\""))->toBe(1, $placeholder);
     }
 
     // Solo nomi di file dei modelli, nessun percorso della macchina che ha
     // esportato il workflow.
     expect($contents)->not->toMatch('#[A-Za-z]:\\\\\\\\|/Users/|/home/#');
-});
+})->with('versioned ComfyUI workflows');
 
-test('ComfyUI receives the versioned workflow with only the dynamic inputs filled', function () {
+test('ComfyUI receives the versioned workflow with only the dynamic inputs filled', function (string $name) {
     fakeComfyUi();
 
-    $image = makeComfyUiGenerator()->generate('Ferie 2027', 'Empatico', 'Testo informativo', 'calendar on a desk');
+    $image = makeComfyUiGenerator(versionedComfyUiWorkflow($name))->generate('Ferie 2027', 'Empatico', 'Testo informativo', 'calendar on a desk');
 
     expect($image)->toBe(['bytes' => "\x89PNG-fake", 'mime' => 'image/png', 'warning' => null, 'reason' => null]);
 
     $positive = CoverImagePrompts::forCommunication('Ferie 2027', 'Empatico', 'Testo informativo', 'calendar on a desk');
     $expected = [
         '%prompt%' => $positive,
+        '%negative_prompt%' => CoverImagePrompts::NEGATIVE,
         '%seed%' => unpack('N', hash('sha256', $positive, true))[1],
         '%width%' => 1280,
         '%height%' => 720,
         '%filename_prefix%' => 'alittlebyte/cover',
     ];
-    $template = json_decode((string) file_get_contents(versionedComfyUiWorkflow()), true);
+    $template = json_decode((string) file_get_contents(versionedComfyUiWorkflow($name)), true);
 
     Http::assertSent(function (Request $request) use ($template, $expected) {
         if (! str_ends_with($request->url(), '/prompt')) {
@@ -142,7 +148,34 @@ test('ComfyUI receives the versioned workflow with only the dynamic inputs fille
         && $request['filename'] === 'cover_00001_.png'
         && $request['subfolder'] === 'alittlebyte'
         && $request['type'] === 'output');
-});
+})->with('versioned ComfyUI workflows');
+
+test('COMFYUI_WORKFLOW selects a versioned workflow by name or any file by path', function (?string $value, string $expected) {
+    $previous = $_SERVER['COMFYUI_WORKFLOW'] ?? null;
+
+    if ($value === null) {
+        unset($_SERVER['COMFYUI_WORKFLOW']);
+    } else {
+        $_SERVER['COMFYUI_WORKFLOW'] = $value;
+    }
+
+    try {
+        $workflow = (require config_path('services.php'))['local_cover']['comfyui']['workflow'];
+    } finally {
+        if ($previous === null) {
+            unset($_SERVER['COMFYUI_WORKFLOW']);
+        } else {
+            $_SERVER['COMFYUI_WORKFLOW'] = $previous;
+        }
+    }
+
+    expect($workflow)->toBe(str_starts_with($expected, '/') ? $expected : resource_path("ai/comfyui/{$expected}"));
+})->with([
+    'non impostato' => [null, 'z-image-turbo.json'],
+    'vuoto' => ['', 'z-image-turbo.json'],
+    'nome versionato' => ['sdxl-lightning.json', 'sdxl-lightning.json'],
+    'percorso' => ['/srv/comfyui/custom.json', '/srv/comfyui/custom.json'],
+]);
 
 test('ComfyUI uses the same seed for the same request', function () {
     $seeds = [];

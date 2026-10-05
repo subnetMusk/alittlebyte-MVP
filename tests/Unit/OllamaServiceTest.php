@@ -106,6 +106,22 @@ test('a model missing from Ollama is reported with the pull hint', function () {
     }
 });
 
+test('keep_alive is sent only when configured, as seconds or as a duration', function (?string $keepAlive, mixed $expected) {
+    Http::fake(['*' => Http::response(ollamaReply(['employee_first_name' => 'MARIO']))]);
+
+    (new OllamaService(app(HttpFactory::class), new AiOutputValidator, 'http://ollama.test:11434', 'qwen3.5:9b', 5, $keepAlive))->extractFields('testo');
+
+    Http::assertSent(fn (Request $request) => $expected === null
+        ? ! array_key_exists('keep_alive', $request->data())
+        : $request['keep_alive'] === $expected);
+})->with([
+    'default di Ollama' => [null, null],
+    'vuoto' => ['', null],
+    'scarica subito' => ['0', 0],
+    'secondi' => ['30', 30],
+    'durata' => ['5m', '5m'],
+]);
+
 test('a missing model or an invalid base url fails before any request', function (string $model, string $baseUrl) {
     Http::fake();
 

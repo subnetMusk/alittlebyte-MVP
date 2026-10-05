@@ -226,6 +226,7 @@ class AppServiceProvider extends ServiceProvider
                 (string) config('services.local_llm.base_url'),
                 (string) config('services.local_llm.model'),
                 (int) config('services.local_llm.timeout_seconds', 300),
+                config('services.local_llm.keep_alive') !== null ? (string) config('services.local_llm.keep_alive') : null,
             );
         });
 

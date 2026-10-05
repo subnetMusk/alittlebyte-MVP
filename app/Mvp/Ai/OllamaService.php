@@ -22,6 +22,7 @@ class OllamaService
         private readonly string $baseUrl,
         private readonly string $model,
         private readonly int $timeoutSeconds,
+        private readonly ?string $keepAlive = null,
     ) {}
 
     /**
@@ -123,7 +124,7 @@ class OllamaService
                         ['role' => 'user', 'content' => $prompt],
                     ],
                     'options' => ['temperature' => $temperature, 'num_predict' => $maxTokens],
-                ])
+                ] + $this->keepAliveOption())
                 ->throw();
         } catch (ConnectionException $e) {
             Log::error('Local LLM unreachable', ['operation' => $operation, 'base_url' => $this->baseUrl, 'message' => $e->getMessage()]);
@@ -173,6 +174,25 @@ class OllamaService
         }
 
         return $schema;
+    }
+
+    /**
+     * Tempo di permanenza del modello in memoria dopo la risposta. Senza
+     * valore vale il default di Ollama; un numero sono secondi, e 0 scarica
+     * subito il modello liberando la VRAM per altri carichi, come la
+     * generazione delle copertine.
+     *
+     * @return array{keep_alive?: int|string}
+     */
+    private function keepAliveOption(): array
+    {
+        $keepAlive = trim((string) $this->keepAlive);
+
+        if ($keepAlive === '') {
+            return [];
+        }
+
+        return ['keep_alive' => ctype_digit($keepAlive) ? (int) $keepAlive : $keepAlive];
     }
 
     /**
