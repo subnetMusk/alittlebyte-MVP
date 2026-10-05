@@ -49,9 +49,8 @@ Traefik gestisce l’ingresso verso i servizi esposti e instrada il traffico app
 
 I worker Laravel consumano task asincroni da SQS e comunicano con Step Functions tramite callback task token. Questo permette di rappresentare una pipeline documentale composta da stati espliciti, retry, gestione errori, idempotenza e aggiornamento progressivo dello stato.
 
-![Architettura E2E della MVP](docs/architecture/diagrams/final-architecture.drawio.png)
+Il diagramma dei container è in [`docs/architecture/final-architecture.md`](docs/architecture/final-architecture.md#container).
 
-<sub>Architettura e2e</sub>
 
 ## Flusso generativo: AI Assistant
 
@@ -194,7 +193,7 @@ documentazione con un percorso di lettura per chi apre il progetto la prima volt
 | ----------------------------------------------------------------- | ----------------------------------------------- |
 | [`docs/README.md`](docs/README.md)                                | Indice e percorso di lettura della doc          |
 | [`docs/mvp-scope.md`](docs/mvp-scope.md)                          | Perimetro funzionale della MVP                  |
-| [`docs/IMPLEMENTATION_OVERVIEW.md`](docs/IMPLEMENTATION_OVERVIEW.md) | Panoramica implementativa dell'applicativo    |
+| [`docs/archive/`](docs/archive/README.md) | Materiale archiviato del corso |
 | [`docs/architecture/`](docs/architecture/)                        | Architettura, tracciabilità Capitolato, Well-Architected |
 | [`docs/architecture-decisions/`](docs/architecture-decisions/README.md) | Architecture Decision Records (ADR)       |
 | [`docs/runbooks/`](docs/runbooks/)                                | Runbook operativi e troubleshooting             |
