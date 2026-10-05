@@ -118,11 +118,29 @@ class AiOutputValidator
     }
 
     /**
+     * Lo schema del contratto di output, per i provider che possono vincolare
+     * la generazione allo stesso schema verificato qui.
+     *
+     * @return array<string, mixed>
+     */
+    public function schema(string $schemaName): array
+    {
+        $schemaPath = $this->schemaPath($schemaName);
+        $schema = json_decode((string) file_get_contents($schemaPath), true);
+
+        if (! is_array($schema)) {
+            throw new \RuntimeException("Schema AI non leggibile: {$schemaPath}");
+        }
+
+        return $schema;
+    }
+
+    /**
      * @throws InvalidAiOutputException
      */
     private function validateAgainstSchema(string $schemaName, string $operation, mixed $decoded): void
     {
-        $schemaPath = resource_path("schemas/ai/{$schemaName}.schema.json");
+        $schemaPath = $this->schemaPath($schemaName);
         $schema = json_decode((string) file_get_contents($schemaPath));
 
         if (! is_object($schema)) {
@@ -142,5 +160,10 @@ class AiOutputValidator
         $messages = $error === null ? ['errore di validazione sconosciuto'] : (new ErrorFormatter)->formatFlat($error);
 
         throw new InvalidAiOutputException($operation, array_slice(array_map('strval', $messages), 0, 10));
+    }
+
+    private function schemaPath(string $schemaName): string
+    {
+        return resource_path("schemas/ai/{$schemaName}.schema.json");
     }
 }
