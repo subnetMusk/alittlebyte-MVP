@@ -39,7 +39,25 @@ test('generateCommunication sends the shared prompt and returns the validated dr
         && $request['stream'] === false
         && $request['think'] === false
         && $request['messages'][0]['content'] === TextModelPrompts::communication('Ferie 2027', 'Empatico', 'Testo informativo')
-        && $request['format'] === (new AiOutputValidator)->schema('generate-communication'));
+        && $request['format']['properties'] === (new AiOutputValidator)->schema('generate-communication')['properties']
+        && $request['format']['required'] === ['title', 'body', 'imagePrompt']);
+});
+
+test('extractFields asks for every declared key, still nullable, and keeps the tolerant validation', function () {
+    // Con le chiavi facoltative la decodifica vincolata permette al modello di
+    // ometterle, e il modello saltava email, codice fiscale e matricola.
+    Http::fake(['*' => Http::response(ollamaReply(['employee_first_name' => 'MARIO']))]);
+
+    $fields = makeOllamaService()->extractFields('testo');
+
+    $contract = (new AiOutputValidator)->schema('extract-fields');
+
+    expect($contract)->not->toHaveKey('required')
+        ->and($fields['employee_first_name'])->toBe('MARIO')
+        ->and($fields['fiscal_code'])->toBeNull();
+
+    Http::assertSent(fn (Request $request) => $request['format']['required'] === array_keys($contract['properties'])
+        && $request['format']['properties']['fiscal_code']['type'] === ['string', 'null']);
 });
 
 test('splitDocument constrains the output with the array schema of the contract', function () {

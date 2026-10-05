@@ -118,7 +118,7 @@ class OllamaService
                     // Il contratto chiede solo il JSON: il ragionamento esplicito
                     // del modello allungherebbe i tempi senza entrare nell'output.
                     'think' => false,
-                    'format' => $this->validator->schema($schemaName),
+                    'format' => self::decodingSchema($this->validator->schema($schemaName)),
                     'messages' => [
                         ['role' => 'user', 'content' => $prompt],
                     ],
@@ -143,6 +143,36 @@ class OllamaService
         }
 
         return ModelJsonResponse::decode($content, $operation);
+    }
+
+    /**
+     * Lo schema usato per vincolare la decodifica rende obbligatorie tutte le
+     * chiavi dichiarate. Nel contratto molte sono facoltative, e la decodifica
+     * vincolata lascia allora al modello la scelta di ometterle: il modello
+     * salta proprio email, codice fiscale e matricola anche quando il testo li
+     * riporta. Le chiavi restano annullabili, e la validazione successiva usa
+     * lo schema originale.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private static function decodingSchema(array $schema): array
+    {
+        if (isset($schema['properties']) && is_array($schema['properties'])) {
+            $schema['required'] = array_keys($schema['properties']);
+
+            foreach ($schema['properties'] as $name => $property) {
+                if (is_array($property)) {
+                    $schema['properties'][$name] = self::decodingSchema($property);
+                }
+            }
+        }
+
+        if (isset($schema['items']) && is_array($schema['items'])) {
+            $schema['items'] = self::decodingSchema($schema['items']);
+        }
+
+        return $schema;
     }
 
     /**

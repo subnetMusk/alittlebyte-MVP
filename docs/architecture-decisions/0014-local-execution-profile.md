@@ -33,7 +33,9 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
   (`ModelJsonResponse`) e la validazione (`AiOutputValidator`) sono condivisi fra Bedrock e Ollama.
   Ollama riceve come `format` lo stesso JSON Schema che il validatore applica dopo: la modalità JSON
   generica impone un oggetto alla radice e lo split, che è un array, perdeva i destinatari successivi
-  al primo.
+  al primo. Nello schema passato a Ollama tutte le chiavi dichiarate sono obbligatorie, anche se
+  annullabili: con le chiavi facoltative la decodifica vincolata permette al modello di ometterle, e
+  il modello saltava email, codice fiscale e matricola pur presenti nel testo.
 - **Stessa forma per l'OCR.** L'adapter locale restituisce pagine e righe con confidenza come
   Textract, così la confidenza per campo ([ADR 0013](0013-per-field-ocr-confidence.md)) funziona
   invariata. Il testo di un text layer non è riconosciuto e porta confidenza 100.
