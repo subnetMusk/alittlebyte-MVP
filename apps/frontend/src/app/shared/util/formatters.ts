@@ -25,6 +25,25 @@ export function formatDateForDisplay(value: string | null | undefined, fallback 
   return value;
 }
 
+/** Maiuscola solo la prima lettera (es. "documento da firmare" -> "Documento da firmare"). */
+export function capitalizeFirst(value: string): string {
+  return value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);
+}
+
 export function getSubDocumentNumericId(documentId: string): number {
   return Number.parseInt(documentId.replace("sub-", ""), 10);
+}
+
+/**
+ * Confidenza dell'estrazione, con l'unità sempre presente.
+ *
+ * Esisteva in due forme: l'elenco documenti la mostrava senza `%`, quello dei
+ * sotto-documenti con `%`. Stesso campo, stessa pagina, due letture diverse —
+ * e senza unità un `64` può essere scambiato per un conteggio.
+ */
+export function formatConfidence(
+  value: number | null | undefined,
+  fallback = "Da verificare"
+): string {
+  return value === null || value === undefined ? fallback : `${value}%`;
 }

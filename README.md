@@ -1,188 +1,173 @@
-# MVP - aLittleByte
+# aLittleByte MVP: AI Assistant e Co-Pilot CdL
+
 <p align="center">
-  <img src="https://img.shields.io/badge/Laravel-API-red?logo=laravel&logoColor=white" alt="Laravel API">
-  <img src="https://img.shields.io/badge/Angular-SPA-DD0031?logo=angular&logoColor=white" alt="Angular SPA">
-  <img src="https://img.shields.io/badge/PostgreSQL-persistence-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/LocalStack-AWS%20emulation-FF9900?logo=amazonaws&logoColor=white" alt="LocalStack">
-  <img src="https://img.shields.io/badge/Bedrock-AI%20provider-FF9900?logo=amazonaws&logoColor=white" alt="Bedrock">
-  <img src="https://img.shields.io/badge/OpenTelemetry-observability-000000?logo=opentelemetry&logoColor=white" alt="OpenTelemetry">
+  <img src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white" alt="Laravel 12">
+  <img src="https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white" alt="PHP 8.4">
+  <img src="https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white" alt="Angular 21">
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 16">
+  <img src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white" alt="Redis 7">
+  <img src="https://img.shields.io/badge/LocalStack-AWS%20emulato-1D2D44" alt="LocalStack">
+  <img src="https://img.shields.io/badge/Terraform-infrastruttura-844FBA?logo=terraform&logoColor=white" alt="Terraform">
+  <img src="https://img.shields.io/badge/Amazon%20Bedrock-AI-FF9900" alt="Amazon Bedrock">
 </p>
 
 <p align="center">
-  <a href="https://github.com/aLittleByte-19/MVP/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/aLittleByte-19/MVP/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI (main)"></a>
+  <img src="https://img.shields.io/badge/Prometheus-metriche-E6522C?logo=prometheus&logoColor=white" alt="Prometheus">
+  <img src="https://img.shields.io/badge/Grafana-dashboard%20e%20log-F46800?logo=grafana&logoColor=white" alt="Grafana">
+  <img src="https://img.shields.io/badge/Ollama-profilo%20locale-000000?logo=ollama&logoColor=white" alt="Ollama">
+  <img src="https://img.shields.io/badge/ComfyUI-copertine%20locali-4B5563" alt="ComfyUI">
 </p>
 
+<p align="center">
+  <a href="https://github.com/subnetMusk/alittlebyte-MVP/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/subnetMusk/alittlebyte-MVP/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI (main)"></a>
+</p>
 
-MVP per workflow HR e documentali assistiti da AI, con generazione di comunicazioni, pipeline asincrona di elaborazione PDF, integrazione AWS-like locale e osservabilità end-to-end.
+Applicazione web per comunicazioni HR generate con l'AI e per l'analisi di documenti paga
+multi-destinatario, con pipeline asincrona su servizi AWS emulati in locale.
 
+## Origine del progetto
 
-## Contesto
+Progetto di gruppo del corso di **Ingegneria del Software dell'Università degli Studi di Padova**
+(a.a. 2025/2026), sviluppato dal gruppo 19, **aLittleByte**, sul capitolato C5 (NEXUM) proposto da
+**Eggon S.r.l.**
 
-Questa MVP nasce nel contesto del progetto proposto da **Eggon**, orientato all’evoluzione di processi HR e documentali tramite funzionalità intelligenti, automazione operativa e integrazione con strumenti digitali già presenti nell’ecosistema aziendale.
+Questo repository è un fork personale. Il repository ufficiale del team è
+[aLittleByte-19/MVP](https://github.com/aLittleByte-19/MVP); la documentazione ufficiale del progetto
+(Product Baseline, fasi precedenti, glossario) è su
+[alittlebyte-19.github.io/Documentazione](https://alittlebyte-19.github.io/Documentazione/). Il fork
+parte dallo stato del team del 22 agosto 2026; le correzioni successive della versione ufficiale sono
+state riportate in modo selettivo, indicando nei commit lo SHA di origine. Le aggiunte fatte dopo il
+fork sono descritte a parte, in [Estensioni del fork personale](#estensioni-del-fork-personale).
 
-Il lavoro si concentra su due aree applicative principali: un assistente generativo per comunicazioni HR e un Co-Pilot documentale per supportare l’elaborazione di PDF multi-destinatario. La MVP esplora come un’interfaccia web, un backend API, una pipeline asincrona, uno storage documentale e servizi AI possano cooperare in un flusso tecnico end-to-end, riproducibile in locale e osservabile durante l’esecuzione.
+## Cosa fa
 
-Il valore principale del progetto è architetturale e dimostrativo: ogni fase del processo viene resa esplicita, tracciabile e verificabile, dalla richiesta utente alla persistenza, dall’avvio del workflow alla lavorazione asincrona, fino alla raccolta di metriche, log, trace e risultati applicativi.
+- **AI Assistant per comunicazioni HR.** Da un prompt, un tono e uno stile genera titolo, testo e
+  copertina, in modo asincrono e seguito dalla SPA via Server-Sent Events. La bozza resta
+  modificabile, rigenerabile ed esportabile in PDF.
+- **Co-Pilot CdL per documenti multi-destinatario.** Il consulente del lavoro carica un PDF con
+  cedolini o CU di più dipendenti; il sistema lo divide in un sotto-documento per destinatario.
+- **OCR.** Il testo viene letto pagina per pagina con la confidenza di ogni riga (Amazon Textract).
+- **Estrazione strutturata.** Un modello (Amazon Nova Lite su Bedrock) estrae nome, codice fiscale,
+  matricola, azienda, email, tipo e data del documento. L'output è validato contro uno JSON Schema;
+  la confidenza di ogni campo viene dalla leggibilità OCR della sua riga, non dall'autovalutazione
+  del modello ([ADR 0013](docs/architecture-decisions/0013-per-field-ocr-confidence.md)).
+- **Human-in-the-loop.** L'operatore rivede e valida i campi, corregge i dati e scarica il messaggio
+  di invio precompilato. L'applicazione non invia nulla da sola: il recapito avviene fuori dalla
+  piattaforma.
 
-## Cosa dimostra la MVP
+Il perimetro completo, area per area, è in [`docs/mvp-scope.md`](docs/mvp-scope.md).
 
-La MVP dimostra un modello applicativo composto da più livelli cooperanti:
+## Stack e architettura
 
-* una **SPA Angular/TypeScript** per l’interazione operatore;
-* un backend **Laravel/PHP** per API, validazione, autorizzazione, orchestrazione applicativa e persistenza;
-* **PostgreSQL** per dati strutturati, stati applicativi, audit e risultati di elaborazione;
-* **Redis** per cache, sessioni e rate limiting;
-* storage documentale **S3-compatible** per PDF originali e sotto-documenti generati;
-* **LocalStack** per emulare localmente servizi AWS come SQS, Step Functions, SSM, Secrets Manager e S3;
-* **emulatore CDN locale** (Nginx) davanti al bucket S3 LocalStack per il serving della SPA Angular (in produzione: AWS CloudFront);
-* integrazione AI tramite astrazione verso **Bedrock** e integrazione OCR tramite **Textract** (attivabile, disabilitata di default);
-* stack di osservabilità con **OpenTelemetry, Prometheus, Grafana, Tempo, Loki, Alloy e Alertmanager**;
-* CI con test backend/frontend, scansione immagini, validazione infrastrutturale e audit accessibilità.
+SPA **Angular 21**; API **Laravel 12** su PHP 8.4; **PostgreSQL 16** e **Redis 7**; S3, SQS con
+DLQ, Step Functions, SSM e Secrets Manager emulati da **LocalStack** e descritti in **Terraform**;
+Traefik e Nginx come ingresso.
 
-La separazione tra richiesta HTTP e workflow asincrono è uno dei punti centrali: l’utente avvia l’elaborazione, il backend registra lo stato e il worker si occupa dei task più lunghi tramite una pipeline orchestrata.
+```mermaid
+flowchart LR
+    user([Operatore]) --> traefik[Traefik]
+    traefik --> cdn[edge-cdn: SPA da S3]
+    cdn --> api[Nginx + Laravel API]
+    api --> db[(PostgreSQL, Redis)]
+    subgraph aws [AWS emulato da LocalStack]
+        s3[(S3 + KMS)]
+        sfn[Step Functions]
+        sqs[SQS + DLQ]
+    end
+    api --> s3
+    api --> sfn
+    sfn --> sqs
+    sqs --> workers[Worker documenti e comunicazioni]
+    workers -- task token e heartbeat --> sfn
+    workers --> ai[Bedrock e Textract]
+```
 
-## Architettura generale
+Gli elementi più interessanti:
 
-L’architettura locale è organizzata intorno a un entrypoint edge, un layer applicativo, servizi dati, workflow asincroni e osservabilità.
+- **Pipeline asincrona orchestrata.** Ogni passo è un task Step Functions consegnato su SQS con
+  callback token. I worker reclamano il task in modo atomico, così una consegna duplicata non riesegue
+  la logica; inviano heartbeat durante OCR e AI; i messaggi falliti finiscono in DLQ.
+- **Architettura esagonale** nei domini Documents e Communications: il dominio e i casi d'uso
+  dipendono solo da porte, gli adapter verso AWS stanno all'esterno e la Dependency Rule è verificata
+  in CI ([ADR 0010](docs/architecture-decisions/0010-hexagonal-architecture-documents-communications.md)).
+- **Quality gate in CI**: test backend e frontend, copertura minima sul codice modificato, analisi
+  statica, audit delle dipendenze, scansione delle immagini con Trivy, audit di accessibilità, verifica
+  dei link della documentazione.
 
-Traefik gestisce l’ingresso verso i servizi esposti e instrada il traffico applicativo verso l’emulatore CDN locale. Quest’ultimo (`edge-cdn`) è un secondo Nginx che emula il ruolo di una CDN/edge — non Amazon CloudFront — servendo la SPA Angular dagli oggetti caricati nel bucket S3 LocalStack e inoltrando `/api/`, `/health` e `/ready` all’Nginx applicativo/Laravel. È un container separato dall’Nginx applicativo, che è un’immagine di produzione e non deve conoscere LocalStack; quest’ultimo resta il proxy verso PHP-FPM e il percorso interno di compatibilità. PostgreSQL conserva lo stato persistente, Redis supporta componenti runtime a bassa latenza, mentre LocalStack fornisce servizi AWS-like in ambiente locale.
+Dettagli in [`docs/architecture/final-architecture.md`](docs/architecture/final-architecture.md).
 
-I worker Laravel consumano task asincroni da SQS e comunicano con Step Functions tramite callback task token. Questo permette di rappresentare una pipeline documentale composta da stati espliciti, retry, gestione errori, idempotenza e aggiornamento progressivo dello stato.
+## Avvio rapido
 
-![Architettura E2E della MVP](docs/architecture/diagrams/final-architecture.drawio.png)
-
-<sub>Architettura e2e</sub>
-
-## Flusso generativo: AI Assistant
-
-Il flusso AI Assistant supporta la generazione di comunicazioni HR a partire da un prompt, con tono e stile selezionati dall’operatore.
-
-La richiesta parte dalla SPA e arriva alle API Laravel, dove viene validata e normalizzata. Il backend invoca il servizio AI configurato, interpreta la risposta, verifica la struttura dei dati ottenuti e registra il risultato come comunicazione applicativa. La generazione viene tracciata attraverso audit event e metriche, così da rendere osservabile l’intero processo.
-
-Il flusso evidenzia il ruolo del backend come livello di controllo tra interfaccia e modello AI: il provider genera il contenuto, mentre l’applicazione mantiene responsabilità su validazione, persistenza, stato e tracciabilità.
-
-## Flusso documentale: Co-Pilot CdL
-
-Il flusso Co-Pilot documentale gestisce PDF multi-destinatario caricati dall’operatore. Dopo l’upload, il backend valida il file, registra il documento originale, salva il contenuto nello storage S3-compatible e avvia una state machine in LocalStack Step Functions.
-
-La state machine pubblica task su SQS usando il callback pattern con task token. I worker Laravel consumano i messaggi, eseguono le fasi previste e notificano a Step Functions il completamento o il fallimento del task. Le fasi principali comprendono OCR, split logico del documento, estrazione dei dati, generazione dei sotto-documenti, aggiornamento dello stato e registrazione degli eventi applicativi.
-
-Il risultato è una pipeline documentale composta da passaggi isolati, monitorabili e riavviabili, con persistenza dello stato e visibilità sui risultati prodotti.
-
-## Monitoring e osservabilità
-
-La MVP integra un layer di osservabilità locale per seguire il comportamento dell’applicazione e della pipeline documentale.
-
-Le metriche applicative e infrastrutturali vengono raccolte tramite OpenTelemetry Collector e Prometheus. Le trace vengono inviate a Tempo, i log sono centralizzati su Loki tramite Alloy, mentre Grafana fornisce dashboard per API, workflow documentale, qualità AI/OCR, code, DLQ, log ed errori. Alertmanager completa il flusso operativo con regole collegate a runbook dedicati.
-
-Questa impostazione rende visibili latency, traffico, errori, saturazione, stato dei worker, andamento della pipeline e qualità delle elaborazioni AI.
-
-## CI e quality gate
-
-La pipeline CI verifica la qualità della repository attraverso controlli backend, frontend, infrastrutturali e di sicurezza.
-
-Il backend viene controllato con formattazione, analisi statica e test automatici. Il frontend viene verificato tramite typecheck, test, build e generazione del client API. Lo stack locale viene validato attraverso Terraform, configurazioni di osservabilità, build delle immagini, scansione Trivy, smoke test e audit di accessibilità con axe e pa11y.
-
-La CI agisce come quality gate del progetto: ogni modifica significativa deve mantenere coerenti codice applicativo, contratto API, infrastruttura locale e comportamento osservabile dello stack.
-
-## Setup locale
-
-### Requisiti
-
-* Docker e Docker Compose
-* Make
-* Git
-* ambiente Unix-like consigliato per script e comandi di supporto
-
-### Avvio rapido
+Servono Docker con Compose, Make, Git e una shell Unix-like (su Windows, Git Bash o WSL).
 
 ```bash
-git clone https://github.com/alittlebyte-19/MVP.git
-cd MVP
-
+git clone https://github.com/subnetMusk/alittlebyte-MVP.git
+cd alittlebyte-MVP
 make setup
 ```
 
-### Verifica dello stack
+L'applicazione risponde su `https://localhost:8443`, Grafana su `https://grafana.localhost:8443`.
+`make verify-fast` esegue in container i controlli principali della CI. Configurazione, worker e reset
+sono in [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md).
 
-```bash
-make test
-make logs
-```
+## Stato e limiti
 
-### Serving statico LocalStack
+- È un MVP locale, non un deploy: AWS è emulato da LocalStack e non esiste un ambiente di
+  produzione.
+- L'identità è simulata; ruoli e tenant sono comunque applicati lato server.
+- Gli unici servizi AWS reali usati sono S3, Textract e Bedrock, e solo con credenziali e
+  configurazione esplicite. Senza, l'OCR resta spento e i passi AI falliscono in modo esplicito,
+  a meno di usare il profilo locale descritto sotto.
 
-```bash
-make frontend-s3-local-deploy
-make edge-cdn-local-url
-make frontend-serving-local-test
-```
+## Estensioni del fork personale
 
-Il flusso builda Angular, provisiona il bucket S3 LocalStack via Terraform, carica `apps/frontend/dist` con cache-control differenziato (`index.html` no-cache, bundle hashati immutable) e verifica il serving attraverso l’emulatore CDN locale su `https://localhost:8443`. L’emulazione valida il pattern build → bucket → distribuzione edge in locale, ma non sostituisce una CDN reale (in produzione AWS CloudFront, con TLS/OAC/edge propagation/invalidation).
+Le due estensioni seguenti sono state aggiunte o completate sul fork dopo la consegna e non fanno
+parte dell'MVP ufficiale del team.
 
-Il bucket `FRONTEND_STATIC_BUCKET` è dedicato solo alla SPA. I documenti continuano a usare `MVP_DOCUMENT_DISK=s3` per S3 LocalStack o `MVP_DOCUMENT_DISK=real_s3` con `AWS_REAL_*` per S3/Textract reali.
+### Osservabilità self-hosted
 
-### Accesso ai servizi
+Uno stack di osservabilità che gira insieme all'applicazione e si consulta da Grafana dopo
+`make setup`:
 
-| Servizio     | URL                                   |
-| ------------ | ------------------------------------- |
-| Applicazione | `https://localhost:8443`              |
-| Grafana      | `https://grafana.localhost:8443`      |
-| Prometheus   | `https://prometheus.localhost:8443`   |
-| Alertmanager | `https://alertmanager.localhost:8443` |
-| Tempo        | `https://tempo.localhost:8443`        |
-| LocalStack   | `http://127.0.0.1:4566`               |
+- **OTel Collector** raccoglie le metriche di Laravel, dei worker e di Traefik; **Prometheus** le
+  conserva e valuta 16 regole di alert, ognuna con il link al proprio runbook; **Alertmanager** le
+  instrada.
+- **Loki** e **Grafana Alloy** centralizzano i log dei container dello stack, etichettati per progetto
+  e servizio.
+- **Grafana** ha sei dashboard provisionate: golden signals delle API, pipeline documentale e delle
+  comunicazioni, qualità di AI e OCR, code e DLQ, log ed errori.
 
-I comandi disponibili sono raccolti nel `Makefile`, che funge da interfaccia operativa per setup, avvio, test, log, reset e controlli locali.
+Le metriche di dominio sono un contratto: un catalogo dichiara nomi, label e valori ammessi, e i test
+falliscono se una dashboard legge una metrica inesistente o se una metrica non è osservata da
+nessuno. La CI valida le configurazioni e controlla che Loki riceva davvero i log.
 
-## Collegamento ad AWS reale
+Lo stack nasce durante il progetto, ma la versione ufficiale lo ha poi sostituito con
+un'osservabilità minima su CloudWatch. Il fork lo mantiene e lo completa: raccolta dei log per label,
+healthcheck, validazione in CI, rimozione del tracing, che non aveva produttori. Dettagli in
+[`docs/runbooks/observability.md`](docs/runbooks/observability.md).
 
-La MVP è progettata per lavorare in locale tramite LocalStack, mantenendo un modello di integrazione compatibile con servizi AWS reali. Il codice applicativo dialoga con servizi astratti tramite configurazione, endpoint e credenziali, rendendo possibile indirizzare gli stessi flussi verso ambienti cloud configurati.
+### Profilo di esecuzione locale per AI e OCR
 
-Le aree predisposte per integrazione AWS reale includono:
+Il flusso AWS originale resta il default e il riferimento (`MVP_EXECUTION_PROFILE=standard`). Il
+profilo `local` fa girare entrambi i flussi senza credenziali AWS:
 
-* object storage S3 per documenti originali e sotto-documenti;
-* SQS per code applicative e task asincroni;
-* Step Functions per orchestrazione dei workflow;
-* SSM Parameter Store per configurazione runtime;
-* Secrets Manager per segreti applicativi;
-* Bedrock per generazione e analisi AI;
-* Textract per OCR su documenti archiviati in S3;
-* SES per successive evoluzioni del dispaccio documentale.
+- **generazione ed estrazione** con un modello Qwen servito da Ollama sull'host;
+- **OCR locale e deterministico**: il text layer del PDF quando c'è, Tesseract per le pagine
+  scansionate, mai un modello generativo;
+- **copertina deterministica** (default), con palette e motivo scelti da tono e stile;
+- **generazione locale dell'immagine**, facoltativa, tramite un provider configurabile (ComfyUI,
+  con workflow versionati per SDXL Lightning e Z-Image-Turbo).
 
-Il passaggio a servizi reali richiede configurazione di account, regioni, IAM policy, bucket, code, state machine, segreti, parametri e permessi coerenti con l’ambiente di destinazione.
+Il profilo non tocca dominio né casi d'uso: ogni provider locale è un nuovo adapter dietro una porta
+già esistente, scelto solo nel composition root. Step Functions, code, task token, SSE e
+persistenza restano identici; prompt e validazione dell'output sono condivisi con Bedrock. Una
+configurazione non valida ferma l'avvio invece di ripiegare su un altro provider.
 
-## Evoluzioni future
+Attivazione e prerequisiti in
+[`docs/runbooks/local-development.md`](docs/runbooks/local-development.md#profilo-di-esecuzione-locale);
+la decisione in [ADR 0014](docs/architecture-decisions/0014-local-execution-profile.md).
 
-La struttura della MVP è predisposta per successive estensioni verso scenari più vicini a un ambiente production-like.
+## Documentazione
 
-Le principali aree di evoluzione riguardano:
-
-* integrazione con un identity provider centralizzato;
-* hardening avanzato della gestione documentale;
-* policy di retention e lifecycle sui file;
-* procedure di backup e restore;
-* dispatch documentale verso canali reali;
-* gestione completa di ruoli, permessi e tenant;
-* validazione operativa su servizi AWS reali;
-* tuning di scalabilità, resilienza e monitoraggio;
-* estensione dei flussi di revisione human-in-the-loop.
-
-## Documentazione tecnica
-
-Il punto d'ingresso è **[`docs/README.md`](docs/README.md)**, che organizza tutta la
-documentazione con un percorso di lettura per chi apre il progetto la prima volta.
-
-| Documento                                                          | Contenuto                                       |
-| ----------------------------------------------------------------- | ----------------------------------------------- |
-| [`docs/README.md`](docs/README.md)                                | Indice e percorso di lettura della doc          |
-| [`docs/mvp-scope.md`](docs/mvp-scope.md)                          | Perimetro funzionale della MVP                  |
-| [`docs/IMPLEMENTATION_OVERVIEW.md`](docs/IMPLEMENTATION_OVERVIEW.md) | Panoramica implementativa dell'applicativo    |
-| [`docs/architecture/`](docs/architecture/)                        | Architettura, tracciabilità Capitolato, Well-Architected |
-| [`docs/architecture-decisions/`](docs/architecture-decisions/README.md) | Architecture Decision Records (ADR)       |
-| [`docs/runbooks/`](docs/runbooks/)                                | Runbook operativi e troubleshooting             |
-| [`docs/security/`](docs/security/)                                | Identità, autorizzazione, IAM, OWASP ASVS       |
-| [`openapi/v1/`](openapi/v1/)                                      | Contratto API OpenAPI                           |
-| [`infra/localstack/`](infra/localstack/)                          | Terraform e risorse AWS-like locali             |
-| [`docker/`](docker/)                                              | Configurazioni runtime, edge e osservabilità    |
-| [`.github/workflows/`](.github/workflows/)                        | Pipeline CI e quality gate                      |
+L'indice è [`docs/README.md`](docs/README.md): architettura, decisioni architetturali (ADR), runbook
+operativi, sicurezza, contratto OpenAPI e materiale del corso archiviato.

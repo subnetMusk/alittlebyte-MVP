@@ -10,7 +10,7 @@ http:
       tls: {}
 
     # Dashboard di osservabilità: nessuna porta host, si entra solo da qui.
-    # Grafana ha login proprio; prometheus/alertmanager/tempo non hanno auth
+    # Grafana ha login proprio; prometheus e alertmanager non hanno auth
     # nativa e stanno dietro basic auth (vedi docker/traefik/usersfile).
     grafana:
       rule: Host(`grafana.localhost`)
@@ -31,14 +31,6 @@ http:
       entryPoints:
         - websecure
       service: alertmanager
-      middlewares:
-        - observability-auth
-      tls: {}
-    tempo:
-      rule: Host(`tempo.localhost`)
-      entryPoints:
-        - websecure
-      service: tempo
       middlewares:
         - observability-auth
       tls: {}
@@ -66,7 +58,3 @@ http:
       loadBalancer:
         servers:
           - url: http://alertmanager:9093
-    tempo:
-      loadBalancer:
-        servers:
-          - url: http://tempo:3200

@@ -1,37 +1,82 @@
-# Document Pipeline Runbook
+# Runbook della pipeline documentale
 
-## Normal Flow
+## Flusso normale
 
-![Workflow asincrono AI/OCR](../architecture/diagrams/06_workflow_async_ai_ocr.drawio.png)
+Stati della state machine (`infra/localstack/state-machines/document-pipeline.asl.json`):
+`ValidateDocument` → `RunTextract` → `RunBedrockExtraction` → `ValidateStructuredOutput` →
+`PersistResults` → `EmitDomainEvent` → `Completed`, con `Failed` come uscita di errore.
 
-<sub>Sorgente editabile: [`06_workflow_async_ai_ocr.drawio`](../architecture/diagrams/06_workflow_async_ai_ocr.drawio), export [`SVG`](../architecture/diagrams/06_workflow_async_ai_ocr.drawio.svg).</sub>
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SPA
+    participant API as API Laravel
+    participant SFN as Step Functions
+    participant Q as SQS documents
+    participant W as Worker queue
+    participant DLQ as DLQ documents
 
-1. SPA posts a PDF to `POST /api/v1/documents/ocr`.
-2. `UploadDocumentRequest` validates MIME type, size, filename, PDF readability, page count and optional Textract limits.
-3. `DocumentProcessingService::storeUpload()` stores the original file on the configured document disk.
-4. `DocumentWorkflowService::start()` starts the Step Functions execution and stores execution metadata on `original_documents`.
-5. Step Functions sends callback-token tasks to SQS.
-6. `php artisan mvp:workflow:consume` receives each message, executes the task through `DocumentWorkflowTaskHandler`, and calls `SendTaskSuccess` or `SendTaskFailure`.
-7. `textract.ocr` calls real Textract only when `TEXTRACT_ENABLED=true` and stores the page-aware OCR text (`ocr_text` + `ocr_pages`) consumed by the next step.
-8. `bedrock.extract` classifies the document and splits it by recipient, then extracts fields, both from the OCR text via Bedrock (text-only Converse, no PDF document block); it persists `sub_documents` and `extracted_data`. The confidence score is computed from OCR legibility × key-field completeness, not from the model's self-assessment.
-9. `persist.results` returns the current processing state.
-10. `dispatch.domain_event` marks workflow completion metadata and records metrics.
+    SPA->>API: POST /api/v1/documents/ocr
+    API->>SFN: StartExecution (document_id, correlation_id)
+    Note over SFN: ValidateDocument: metadata.valid = false porta a Failed
+    loop RunTextract, RunBedrockExtraction, PersistResults, EmitDomainEvent
+        SFN->>Q: sendMessage.waitForTaskToken (taskType, taskToken)
+        Q->>W: ReceiveMessage
+        W->>W: claim atomico in workflow_tasks (task_token_hash)
+        W-->>SFN: SendTaskHeartbeat durante OCR e Bedrock
+        alt task riuscito
+            W->>SFN: SendTaskSuccess (task_result)
+        else task fallito
+            W->>SFN: SendTaskFailure
+        end
+        W->>Q: DeleteMessage
+    end
+    Note over SFN: dopo RunBedrockExtraction, ValidateStructuredOutput porta a Failed se task_result.status = failed
+    Note over SFN: ogni task ritenta 2 volte su TaskFailed o Timeout, poi Catch verso Failed
+    Note over Q,DLQ: un messaggio ricevuto 3 volte senza essere cancellato passa alla DLQ
+    SPA->>API: GET /api/v1/documents/{id}/stream (SSE, avanzamento)
+```
 
-## Required Runtime Configuration
+1. La SPA invia il PDF a `POST /api/v1/documents/ocr`.
+2. `UploadDocumentRequest` controlla tipo MIME, dimensione, nome file, leggibilità del PDF, numero
+   di pagine e, se attivi, i limiti di Textract.
+3. `UploadDocumentService::upload()` salva l'originale sul disco documenti configurato.
+4. `StartDocumentWorkflowService::start()` avvia l'esecuzione Step Functions e ne salva i metadati
+   su `original_documents`, nella stessa transazione e sotto lock: due richieste ravvicinate non
+   avviano due esecuzioni.
+5. Step Functions pubblica i task con callback token sulla coda SQS.
+6. `php artisan mvp:workflow:consume --queue=documents` riceve ogni messaggio, esegue il task tramite
+   `DocumentWorkflowTaskHandler` e chiama `SendTaskSuccess` o `SendTaskFailure`.
+7. `textract.ocr` chiama Textract reale solo con `TEXTRACT_ENABLED=true` e salva il testo OCR per
+   pagina (`ocr_text`, `ocr_pages`) usato dal passo successivo.
+8. `bedrock.extract` classifica il documento, lo divide per destinatario ed estrae i campi, sempre
+   dal testo OCR (Converse solo testo, senza blocco PDF), e salva `sub_documents` ed
+   `extracted_data`. La confidenza viene dalla leggibilità OCR, non dall'autovalutazione del
+   modello: ogni campo prende la confidenza della riga da cui proviene e il sotto-documento quella
+   del suo campo chiave più debole, con una soglia più alta per il codice fiscale
+   ([ADR 0013](../architecture-decisions/0013-per-field-ocr-confidence.md)).
+9. `persist.results` restituisce lo stato di elaborazione corrente.
+10. `dispatch.domain_event` registra il completamento del workflow e le metriche.
 
-| Variable | Required for | Notes |
+## Configurazione runtime richiesta
+
+| Variabile | Serve a | Note |
 | --- | --- | --- |
-| `DOCUMENT_PIPELINE_STATE_MACHINE_ARN` | API workflow start | Created by LocalStack Terraform in local runs. |
-| `DOCUMENT_PIPELINE_TASK_QUEUE_URL` | API and worker | SQS callback-token queue URL. |
-| `SQS_DLQ_URL` | DLQ diagnostics | Used by `mvp:dlq:list`. |
-| `MVP_DOCUMENT_DISK` | Upload storage | Use `s3` for LocalStack demo, `real_s3` for real Textract validation. |
-| `AWS_REAL_*` | Real S3/Textract | Must not be committed. |
-| `TEXTRACT_ENABLED` | OCR | Defaults false in local/CI. Requires `MVP_DOCUMENT_DISK=real_s3`. |
-| `BEDROCK_MODEL_ID` | AI extraction | Real Bedrock access must be granted externally. |
+| `DOCUMENT_PIPELINE_STATE_MACHINE_ARN` | Avvio del workflow dall'API | Creata da Terraform in LocalStack. |
+| `DOCUMENT_PIPELINE_TASK_QUEUE_URL` | API e worker | Coda SQS dei task con callback token. |
+| `SQS_DLQ_URL` | Diagnostica della DLQ | Usata da `mvp:dlq:list --queue=documents` e dal probe delle DLQ. |
+| `MVP_DOCUMENT_DISK` | Storage degli upload | `s3` per LocalStack, `real_s3` per Textract reale. |
+| `AWS_REAL_*` | S3 e Textract reali | Mai nel repository. |
+| `TEXTRACT_ENABLED` | OCR | `false` di default in locale e in CI. Richiede `MVP_DOCUMENT_DISK=real_s3`. Ignorata nel profilo local. |
+| `BEDROCK_MODEL_ID` | Estrazione AI | L'accesso al modello va abilitato nell'account AWS. |
+| `MVP_EXECUTION_PROFILE` | Provider di OCR e AI | `local` sostituisce Textract e Bedrock con l'OCR locale e Ollama, senza cambiare il flusso ([`local-development.md`](local-development.md#profilo-di-esecuzione-locale)). |
 
-When `TEXTRACT_ENABLED=true`, `MVP_DOCUMENT_DISK` must be `real_s3`: real Textract can only read objects from real S3, so `DocumentWorkflowService::start()` rejects the workflow up front with an explicit error if OCR is enabled while documents live on the LocalStack disk. The S3 key passed to Textract includes the document disk root prefix (`AWS_REAL_S3_PREFIX`).
+Con `TEXTRACT_ENABLED=true`, `MVP_DOCUMENT_DISK` deve valere `real_s3`: Textract reale legge solo
+oggetti su S3 reale, quindi `StartDocumentWorkflowService::start()` rifiuta subito il workflow, con
+un errore esplicito, se l'OCR è attivo e i documenti stanno su LocalStack. La chiave S3 passata a
+Textract include il prefisso del disco (`AWS_REAL_S3_PREFIX`).
 
-## Manual Smoke
+## Prova manuale
 
 ```bash
 make setup
@@ -39,37 +84,59 @@ curl --insecure https://localhost:8443/health
 curl --insecure https://localhost:8443/ready
 ```
 
-Upload a small PDF from the SPA, then watch:
+Caricare un PDF dalla SPA (in `demo/pdf/dataset/` ce ne sono di prova), poi:
 
 ```bash
 make logs
-docker compose exec app php artisan mvp:dlq:list
+docker compose exec app php artisan mvp:dlq:list --queue=documents
 ```
 
-Worker logs are also available in Grafana (Loki): see the `document-pipeline` and `ai-ocr-quality` dashboards or query `{project="mvp", service="queue"}` in the `Logs and Errors` dashboard.
+I log dei worker sono anche in Grafana: dashboard `document-pipeline` e `ai-ocr-quality`, oppure la
+query `{project="<progetto>", service="queue"}` nella dashboard `Logs and Errors`, dove
+`<progetto>` è il progetto Compose del checkout ([`observability.md`](observability.md#flusso-dei-log)).
 
-## Scaling Workers
+Il percorso con S3 e Textract reali si prova a parte. `make aws-smoke` è solo un controllo di
+configurazione; lo smoke vero su S3, Textract e Bedrock è il workflow manuale `aws-smoke.yml`
+([`ci-cd.md`](ci-cd.md)).
+
+## Più worker
 
 ```bash
-make workers WORKERS=2   # docker compose up -d --scale queue=2
+make workers WORKERS=2   # scala sia queue sia queue-communications
 ```
 
-Multiple workers are safe: each Step Functions callback token is tracked in `document_workflow_tasks` (`task_token_hash` unique) and claimed atomically, so a duplicate SQS delivery is consumed without re-running the business logic (`mvp_sqs_messages_duplicate_total` counts these). The SQS `visibility_timeout_seconds` (900s, Terraform) exceeds the longest ASL task timeout (720s), so an in-flight message never becomes visible to a second worker while still being processed. Workers send `SendTaskHeartbeat` while polling Textract and between Bedrock segments; a stale `running` task (dead worker) is re-claimable after `MVP_WORKFLOW_CLAIM_TTL_SECONDS` (default 900s).
+Più worker sono sicuri. Ogni callback token è registrato in `workflow_tasks` (`task_token_hash`
+univoco) e reclamato in modo atomico: una consegna SQS duplicata viene consumata senza rieseguire la
+logica di business, e `mvp_sqs_messages_duplicate_total` la conta. Il `visibility_timeout_seconds`
+delle code (900 s, in Terraform) supera il timeout del task più lungo dell'ASL (720 s), quindi un
+messaggio in lavorazione non torna visibile a un secondo worker. I worker inviano
+`SendTaskHeartbeat` mentre attendono Textract e fra un segmento Bedrock e l'altro; un task rimasto
+`running` per un worker morto torna reclamabile dopo `MVP_WORKFLOW_CLAIM_TTL_SECONDS` (default
+900 s).
 
-Real AWS OCR smoke is intentionally separate:
+## Timeout dello stream SSE e pool PHP-FPM
 
-```bash
-MVP_DOCUMENT_DISK=real_s3 TEXTRACT_ENABLED=true make aws-smoke
-```
+`DocumentController::stream()` invia l'avanzamento via SSE per al massimo
+`mvp.documents.stream_timeout_seconds` (default 1800 s, sopra il caso peggiore di circa 1140 s:
+Textract 420 s più Bedrock 720 s più persistenza e dispatch). Allo scadere invia `still_running`,
+non `error`: la SPA lascia attivo l'avanzamento e non lo tratta come fallimento. Il worker sta ancora
+lavorando; è solo la vista in tempo reale ad aver smesso di seguirlo, e il successivo
+`GET /api/v1/state` riporta l'esito.
 
-`make aws-smoke` currently validates required configuration only. Add account-specific S3/Textract/Bedrock calls after enterprise IAM roles and model access are supplied.
+Ogni stream aperto tiene occupato un processo PHP-FPM del servizio `app` per tutta la durata. Il pool
+è dimensionato apposta in `docker/php/www-pool.conf` (`pm.max_children = 20`, contro i 5 di default
+dell'immagine `php:8.4-fpm`): con il default bastavano 3-5 upload concorrenti per esaurire i processi
+e bloccare `/health`, `/ready` e ogni altro endpoint fino alla fine di uno stream. Se il carico
+cresce, va alzato `pm.max_children`, verificando la memoria del container, prima di allungare il
+timeout dello stream.
 
-## Failure States
+## Fallimenti
 
-| Failure | Observable signal | Operator action |
+| Fallimento | Segnale osservabile | Azione |
 | --- | --- | --- |
-| Workflow start failure | `workflow_failed_at`, audit event, `mvp_stepfunctions_executions_failed_total` | Check state machine ARN and SQS queue URL. |
-| SQS task failure | `document_workflow_tasks.status=failed`, worker log | Inspect DLQ and task error. |
-| Textract failure | `mvp_textract_jobs_failed_total` | Check real S3 object key, IAM and Textract limits. |
-| Bedrock failure | failed document/sub-document error message | Check model access, model ID and credentials. |
-| Stuck document | `mvp_document_stuck_processing_total` | Check worker, SQS queue and Step Functions execution. |
+| Avvio del workflow fallito | `workflow_failed_at`, evento di audit, `mvp_stepfunctions_executions_failed_total` | Controllare l'ARN della state machine e l'URL della coda. |
+| Task SQS fallito | `workflow_tasks.status=failed`, log del worker | Ispezionare la DLQ e l'errore del task ([`dlq-recovery.md`](dlq-recovery.md)). |
+| Textract fallito | `mvp_textract_jobs_failed_total` | Controllare la chiave dell'oggetto S3, i permessi IAM e i limiti di Textract. |
+| Bedrock fallito | Messaggio di errore sul documento o sul sotto-documento | Controllare accesso al modello, ID del modello e credenziali. |
+| Documento bloccato | `mvp_documents_stuck_processing`, alert `DocumentStuckInProcessing` | Controllare worker, coda SQS ed esecuzione Step Functions. |
+| Stream SSE scaduto (`still_running`) | La SPA continua a leggere lo stato, nessun errore mostrato | Non è un fallimento: controllare `mvp_documents_stuck_processing` prima di supporlo. |

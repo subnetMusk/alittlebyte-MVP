@@ -1,19 +1,11 @@
-# Frontend SPA
+# SPA del frontend
 
-Angular/TypeScript SPA for the document pipeline MVP.
+SPA Angular/TypeScript della MVP. Struttura, ViewModel e sistema visivo sono descritti in
+[`docs/architecture/frontend.md`](../../docs/architecture/frontend.md).
 
-## Structure
+## Comandi
 
-- `src/app`: Angular bootstrap, routes, shell, core services, shared components and feature pages.
-- `src/app/core`: navigation model, API interceptors, correlation IDs, structured logging, global errors, theme and state store.
-- `src/app/features`: assistant, overview and document Co-Pilot pages.
-- `src/api/generated`: Orval generated Angular/HttpClient service and model types. Do not edit manually.
-- `src/styles`: global tokens, base styles and minimal utilities.
-- `public`: static assets copied into the Angular production build.
-
-## Commands
-
-From the repository root:
+Dalla radice del repository:
 
 ```bash
 make openapi-generate
@@ -24,6 +16,9 @@ make frontend-build
 make frontend-s3-local-deploy
 ```
 
-The root package uses npm workspaces. Frontend commands run through the Docker Compose `node` tool container (`node:22-bookworm-slim`), not through the host Node runtime.
+Il package radice usa i workspace npm. I comandi girano nel container Compose `node`
+(`node:22-bookworm-slim`), non con il Node dell'host.
 
-The app calls Laravel with relative `/api/v1` URLs by default. `proxy.conf.json` keeps `ng serve` aligned with the local Traefik/Nginx entrypoint, while production builds are static and can be served by Nginx or, in the default local flow, by the local CDN emulator (a separate Nginx) in front of the LocalStack S3 bucket — the role a real CDN such as AWS CloudFront would play in production.
+L'app chiama Laravel con URL relativi `/api/v1`. `proxy.conf.json` allinea `ng serve` all'ingresso
+locale Traefik/Nginx; la build di produzione è statica e nel flusso locale la serve `edge-cdn` dal
+bucket S3 di LocalStack, il ruolo che in produzione avrebbe una CDN come CloudFront.

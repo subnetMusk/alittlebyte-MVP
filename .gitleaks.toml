@@ -1,0 +1,12 @@
+# Regole predefinite di gitleaks, piu' un'eccezione mirata: le credenziali
+# dimostrative dello stack locale, documentate in docs/runbooks/observability.md
+# (basic auth di Traefik in docker/traefik/usersfile e login di Grafana).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Credenziali dimostrative dello stack locale"
+regexTarget = "match"
+regexes = [
+  '''(-u|--user)\s+"?(admin:admin|mvp:mvp-obs-local-password)"?''',
+]

@@ -1,33 +1,42 @@
 name: CI
 
-# Pipeline a 3 macroaree parallele con responsabilità separate:
-#   backend  — build immagine app (dev) + check PHP (Composer, Pint, Larastan, Pest)
-#   frontend — suite SPA + contratto OpenAPI (solo immagine node)
-#   stack    — IaC/observability statici, build produzione, scan Trivy,
-#              smoke HTTPS, accessibilità, push GHCR
+# Pipeline composta da sei job con responsabilità separate:
+#   backend: build immagine app di sviluppo, controlli PHP e coverage globale
+#   frontend: suite SPA, contratto OpenAPI e coverage globale
+#   coverage-diff: coverage del codice modificato rispetto al commit base
+#                  dell'evento (push o pull request)
+#   stack: IaC, osservabilità, build di produzione, scansione Trivy,
+#          smoke HTTPS, accessibilità e pubblicazione GHCR
+#   secrets: scansione gitleaks dell'intera history
+#   docs: link relativi e anchor dei file Markdown
 # Ogni job acquisisce le immagini esterne senza pull anonimi: mirror GHCR
 # (autenticato, nessun rate limit per-IP) con fallback upstream; il job stack
 # usa anche la cache di Actions (zero pull a cache hit). Vedi
 # scripts/ci/resolve-images.sh e .github/workflows/mirror-images.yml.
 
+# La CI gira su ogni push di ogni branch, non solo su develop/main e in PR:
+# chi lavora su un branch di feature vede i test rossi mentre sta sviluppando,
+# invece di scoprirli quando il branch e' gia' da mergiare.
 on:
   push:
     branches:
-      - develop
-      - main
-      - migrate/react_angular
+      - "**"
     tags:
       - "v*"
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Push e pull request dello stesso branch condividono il gruppo. Rimane una
+  # sola esecuzione completa, con tutti i job previsti dalla pipeline.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
+# Lettura dei pacchetti per i pull dal mirror GHCR; la scrittura serve solo
+# al job stack, che pubblica le immagini.
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 env:
   # secrets non è disponibile in steps[*].if: va mappato su env
@@ -40,11 +49,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -81,9 +90,24 @@ jobs:
           -e DB_PASSWORD=
           app vendor/bin/phpstan analyse --memory-limit=1G
 
-      - name: Run Pest
+      # Verifica meccanica della Dependency Rule (ADR 0010): il livello
+      # Domain dei domini esagonali non deve importare Illuminate\*, Aws\*,
+      # o modelli Eloquent.
+      - name: Check hexagonal Dependency Rule
+        run: bash scripts/ci/check-dependency-rule.sh
+
+      # L'immagine applicativa usa www-data. Su un runner Linux Docker crea un
+      # bind mount mancante come root e Pest non può scriverci i report.
+      - name: Prepare backend coverage directory
+        run: |
+          mkdir -p coverage
+          chmod 0777 coverage
+
+      - name: Run Pest with coverage
         run: >
           docker compose run --rm --no-deps
+          -v "$PWD/coverage:/var/www/html/coverage"
+          -e XDEBUG_MODE=coverage
           -e CONFIG_SOURCE=env
           -e APP_ENV=testing
           -e CACHE_STORE=array
@@ -95,7 +119,61 @@ jobs:
           -e DB_PORT=
           -e DB_USERNAME=
           -e DB_PASSWORD=
-          app php artisan test --display-warnings
+          app php -d memory_limit=1G vendor/bin/pest
+          --display-warnings
+          --coverage
+          --path-coverage
+          --coverage-cobertura coverage/cobertura.xml
+          --coverage-html coverage/html
+
+      # Pest scrive i report come www-data del container: il runner li legge ma
+      # non puo' riscriverli, e la normalizzazione in place fallirebbe. Si riprende
+      # la proprieta' invece di derivare un secondo file, cosi' il Cobertura resta
+      # l'unica fonte del dato di coverage del backend.
+      - name: Take ownership of backend coverage reports
+        run: sudo chown -R "$(id -u):$(id -g)" coverage
+
+      # Il report esce con i path assoluti del container: senza questa riscrittura
+      # diff-cover non aggancia nessun file e il gate sul diff passerebbe a vuoto.
+      - name: Normalize backend coverage paths
+        run: node scripts/ci/normalize-cobertura-paths.mjs coverage/cobertura.xml /var/www/html
+
+      # Unico gate sui minimi globali del backend: Pest non usa piu' --min, che
+      # ripeteva la stessa soglia sulla stessa metrica ignorando i branch.
+      - name: Check backend coverage thresholds
+        run: node scripts/ci/check-coverage-thresholds.mjs backend coverage/cobertura.xml
+
+      - name: Upload backend coverage data
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-coverage
+          path: coverage/cobertura.xml
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload backend coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-coverage-report
+          path: coverage/html
+          if-no-files-found: warn
+          retention-days: 7
+
+      # Controparte PHP dell'audit npm del job frontend: come quello, guarda le
+      # sole dipendenze di produzione ed e' in coda, cosi' un advisory non
+      # nasconde l'esito dei test. I pacchetti abbandonati vengono riportati ma
+      # non fanno fallire il job: non sono vulnerabilita'.
+      # --locked audita quanto dichiarato dal lock, non il vendor cotto
+      # nell'immagine, cosi' il gate resta indipendente dal momento del build.
+      # La soglia e' applicata dallo script: composer da solo fallisce su
+      # qualsiasi severita' e non sa filtrarla.
+      - name: Audit production PHP dependencies
+        run: >
+          docker compose run --rm --no-deps app
+          composer audit --locked --no-dev --abandoned=report --format=json
+          | node scripts/ci/check-composer-advisories.mjs
 
   frontend:
     name: Frontend checks
@@ -103,11 +181,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -123,7 +201,7 @@ jobs:
         run: docker compose --profile tools run --rm node npm ci --ignore-scripts
 
       - name: Lint OpenAPI contract
-        run: docker compose --profile tools run --rm node npx --yes @redocly/cli@latest lint openapi/v1/alittlebyte-mvp-api.yaml
+        run: docker compose --profile tools run --rm node npx --yes @redocly/cli@2.57.0 lint openapi/v1/alittlebyte-mvp-api.yaml
 
       - name: Generate OpenAPI client
         run: docker compose --profile tools run --rm node npm run openapi:generate
@@ -137,8 +215,31 @@ jobs:
       - name: Typecheck SPA
         run: docker compose --profile tools run --rm node npm run frontend:typecheck
 
-      - name: Test SPA
-        run: docker compose --profile tools run --rm node npm run frontend:test
+      - name: Test SPA with coverage
+        run: docker compose --profile tools run --rm node sh -lc 'cd apps/frontend && npx jest --coverage --runInBand'
+
+      - name: Check frontend coverage thresholds
+        run: node scripts/ci/check-coverage-thresholds.mjs frontend apps/frontend/coverage/coverage-summary.json
+
+      - name: Upload frontend coverage data
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-coverage
+          path: |
+            apps/frontend/coverage/lcov.info
+            apps/frontend/coverage/coverage-summary.json
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-coverage-report
+          path: apps/frontend/coverage/lcov-report
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Build SPA
         run: docker compose --profile tools run --rm node npm run frontend:build
@@ -146,13 +247,163 @@ jobs:
       - name: Audit production Node dependencies
         run: docker compose --profile tools run --rm node npm audit --omit=dev --audit-level=high
 
-  stack:
-    name: Stack, security and a11y
+  secrets:
+    name: Secret scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      # Tutta la history e non solo l'albero corrente: un segreto tolto da un
+      # commit successivo resta leggibile in quelli precedenti. Le eccezioni
+      # stanno in .gitleaks.toml.
+      - name: Scan history with gitleaks
+        run: >
+          docker run --rm -v "$PWD:/repo:ro"
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+
+  docs:
+    name: Documentation links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Solo link relativi e anchor: quelli esterni dipendono dalla rete e
+      # renderebbero il gate instabile.
+      - name: Check Markdown links
+        run: node scripts/ci/check-markdown-links.mjs
+
+  coverage-diff:
+    name: Coverage diff
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Download backend coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: backend-coverage
+          path: coverage/backend
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-coverage
+          path: coverage/frontend
+
+      - name: Install diff-cover
+        run: python -m pip install diff-cover==10.4.1
+
+      # La base e' il commit da cui parte l'evento, non un ref di branch: su un
+      # push il ref del branch punta gia' al commit corrente e il diff sarebbe
+      # vuoto. Pull request: base della PR. Push: commit precedente al push.
+      # Senza una base utilizzabile (creazione di un branch o di un tag,
+      # workflow_dispatch, commit non piu' raggiungibile) si ripiega sul
+      # merge-base con il default branch, segnalandolo nel log.
+      - name: Resolve diff base
+        id: diff-base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) candidate="$PR_BASE_SHA"; origin="github.event.pull_request.base.sha" ;;
+            push) candidate="$PUSH_BEFORE_SHA"; origin="github.event.before" ;;
+            *) candidate=""; origin="nessuna base per l'evento ${EVENT_NAME}" ;;
+          esac
+
+          # Uno SHA di soli zeri indica la creazione del ref: non c'e' un commit precedente.
+          if [ -n "${candidate//0/}" ] && git cat-file -e "${candidate}^{commit}" 2>/dev/null; then
+            base="$candidate"
+          else
+            base="$(git merge-base "origin/${DEFAULT_BRANCH}" HEAD)"
+            echo "::warning::Base dell'evento non utilizzabile (${origin}: '${candidate}'): il diff coverage usa il merge-base con origin/${DEFAULT_BRANCH}."
+            origin="merge-base con origin/${DEFAULT_BRANCH}"
+          fi
+
+          echo "Base: ${base} (${origin})"
+          echo "Head: $(git rev-parse HEAD)"
+          echo "sha=${base}" >> "$GITHUB_OUTPUT"
+
+      # diff-cover non accetta XML e LCov nella stessa invocazione, quindi i due
+      # stack vengono misurati separatamente. Ogni report descrive solo i propri
+      # file: le righe modificate dell'altro stack non risultano misurate e
+      # restano fuori dal conteggio, senza sovrapposizioni ne' doppi conteggi.
+      # Un commit che tocca un solo stack lascia l'altra invocazione a zero righe
+      # misurate: per diff-cover e' un esito positivo, e il log lo dichiara.
+      - name: Check changed-line coverage
+        env:
+          BASE_SHA: ${{ steps.diff-base.outputs.sha }}
+        run: |
+          minimum="$(jq -er '.diff.lines' coverage-thresholds.json)"
+          status=0
+
+          check() {
+            local report="$1" stack="$2"
+            local summary="coverage/diff-coverage-${stack}.json"
+
+            echo "::group::Coverage del codice modificato: ${stack} (minimo ${minimum}%)"
+            diff-cover "$report" \
+              --compare-branch="$BASE_SHA" \
+              --format="html:coverage/diff-coverage-${stack}.html,markdown:coverage/diff-coverage-${stack}.md,json:${summary}" \
+              --show-uncovered \
+              --fail-under="$minimum" || status=1
+            echo "::endgroup::"
+
+            measured="$(jq -r '.total_num_lines' "$summary")"
+            echo "${stack}: base ${BASE_SHA}, head $(git rev-parse HEAD), righe modificate ${measured} misurate su $(jq -r '.num_changed_lines' "$summary"), non coperte $(jq -r '.total_num_violations' "$summary")"
+            if [ "$measured" = "0" ]; then
+              echo "::notice::Coverage diff ${stack}: nessuna riga modificata misurata rispetto a ${BASE_SHA}."
+            fi
+          }
+
+          check coverage/backend/cobertura.xml backend
+          check coverage/frontend/lcov.info frontend
+
+          exit "$status"
+
+      - name: Upload changed-line coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: changed-line-coverage
+          path: |
+            coverage/diff-coverage-backend.html
+            coverage/diff-coverage-backend.md
+            coverage/diff-coverage-backend.json
+            coverage/diff-coverage-frontend.html
+            coverage/diff-coverage-frontend.md
+            coverage/diff-coverage-frontend.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  stack:
+    name: Stack, security and a11y
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    # Nome di progetto Compose diverso da quello derivato dalla cartella: lo
+    # smoke dei log verifica che la raccolta non dipenda dal nome del checkout.
+    env:
+      COMPOSE_PROJECT_NAME: ci-smoke-${{ github.run_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # I runner ubuntu-latest hanno ~14 GB liberi su /: insufficienti per
       # caricare tutte le immagini esterne + buildare le immagini di produzione
@@ -172,7 +423,7 @@ jobs:
 
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -190,7 +441,7 @@ jobs:
 
       - name: Restore image cache
         id: image-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: /tmp/ci-images.tar.zst
           key: docker-images-${{ steps.images.outputs.key }}
@@ -206,12 +457,26 @@ jobs:
             || echo "::warning::Login GHCR fallito, uso solo gli upstream"
           bash scripts/ci/pull-images.sh /tmp/ci-images.txt
 
-      # L'archivio viene caricato in cache dal post-step di actions/cache
-      - name: Save image archive for cache
-        if: steps.image-cache.outputs.cache-hit != 'true'
+      # Le esecuzioni di feature e pull request riusano la cache dei branch di
+      # riferimento senza crearne copie isolate da oltre 2 GB.
+      - name: Prepare image archive for cache
+        if: >-
+          steps.image-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
         run: |
           mapfile -t images < /tmp/ci-images.txt
           docker save "${images[@]}" | zstd -T0 -o /tmp/ci-images.tar.zst
+
+      - name: Save image cache
+        if: >-
+          steps.image-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: /tmp/ci-images.tar.zst
+          key: docker-images-${{ steps.images.outputs.key }}
 
       # --- Check statici senza build (fail fast) ---
 
@@ -285,7 +550,7 @@ jobs:
         run: docker compose --profile release run --rm migrate
 
       - name: Start runtime
-        run: docker compose up -d app queue nginx traefik otel-collector prometheus tempo alertmanager grafana
+        run: docker compose up -d app queue queue-communications nginx traefik otel-collector prometheus alertmanager grafana loki alloy
 
       - name: Smoke HTTPS endpoints
         run: |
@@ -340,19 +605,64 @@ jobs:
           # Senza credenziali le UI protette devono rispondere 401
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' --insecure --resolve prometheus.localhost:8443:127.0.0.1 https://prometheus.localhost:8443/-/ready)" = "401"
 
+      # Alloy scopre i container per la label com.alittlebyte.observability.logs,
+      # non per progetto Compose: Loki deve ricevere i log con la label service
+      # e con la label project di questo run. Si interroga Loki dal proxy dei
+      # datasource di Grafana, l'unico accesso esposto da Traefik.
+      - name: Smoke centralized logs
+        run: |
+          loki_api() {
+            curl --silent --fail --insecure --resolve grafana.localhost:8443:127.0.0.1 --user "admin:admin" \
+              "https://grafana.localhost:8443/api/datasources/proxy/uid/loki/loki/api/v1/$1"
+          }
+
+          for _ in {1..60}; do
+            if loki_api "label/project/values" | jq -e --arg project "$COMPOSE_PROJECT_NAME" '.data | index($project)' > /dev/null; then
+              break
+            fi
+
+            sleep 3
+          done
+
+          echo "Label: $(loki_api labels | jq -c .data)"
+          echo "Progetti: $(loki_api label/project/values | jq -c .data)"
+          echo "Servizi: $(loki_api label/service/values | jq -c .data)"
+          loki_api labels | jq -e '.data | index("service")' > /dev/null
+          loki_api "label/project/values" | jq -e --arg project "$COMPOSE_PROJECT_NAME" '.data | index($project)' > /dev/null
+
       # Il volume node-modules è per-job: l'npm ci del job frontend non è
       # disponibile qui e va rieseguito prima degli audit a11y
       - name: Install audit dependencies
         run: docker compose --profile tools run --rm node npm ci --ignore-scripts
 
       - name: Smoke SPA with enforced CSP
-        run: docker compose --profile tools run --rm frontend-audit node scripts/a11y/csp-smoke.mjs https://traefik:8443
+        run: docker compose --profile tools run --rm frontend-audit node scripts/a11y/csp-smoke.mjs
+          https://traefik:8443/overview https://traefik:8443/assistant https://traefik:8443/copilot
 
       - name: Run axe
-        run: docker compose --profile tools run --rm frontend-audit node scripts/a11y/axe-playwright.mjs https://traefik:8443
+        run: docker compose --profile tools run --rm frontend-audit node scripts/a11y/axe-playwright.mjs
+          https://traefik:8443/overview https://traefik:8443/assistant https://traefik:8443/copilot
 
       - name: Run Pa11y
-        run: docker compose --profile tools run --rm frontend-audit node scripts/a11y/pa11y-runner.mjs https://traefik:8443
+        run: docker compose --profile tools run --rm frontend-audit node scripts/a11y/pa11y-runner.mjs
+          https://traefik:8443/overview https://traefik:8443/assistant https://traefik:8443/copilot
+
+      - name: Collect stack diagnostics
+        if: failure()
+        run: |
+          mkdir -p artifacts/stack-diagnostics
+          docker compose ps --all > artifacts/stack-diagnostics/compose-ps.txt
+          docker compose logs --no-color --timestamps > artifacts/stack-diagnostics/compose.log 2>&1
+          docker system df > artifacts/stack-diagnostics/docker-disk-usage.txt
+
+      - name: Upload stack diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stack-diagnostics
+          path: artifacts/stack-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Stop application
         if: always()
@@ -363,7 +673,7 @@ jobs:
 
       - name: Login to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -372,7 +682,7 @@ jobs:
       - name: Docker metadata (app)
         if: github.event_name != 'pull_request'
         id: meta-app
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/mvp-app
           tags: |
@@ -383,7 +693,7 @@ jobs:
       - name: Docker metadata (nginx)
         if: github.event_name != 'pull_request'
         id: meta-nginx
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/mvp-nginx
           tags: |

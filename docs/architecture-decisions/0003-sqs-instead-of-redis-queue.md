@@ -1,4 +1,4 @@
-# ADR 0003 — SQS come backend di coda invece di Redis Queue
+# ADR 0003: SQS come backend di coda invece di Redis Queue
 
 Status: Accepted, implemented
 Date: 2026-06-08
@@ -47,11 +47,11 @@ Redis non deve essere il backend di coda primario e Horizon non va introdotto.
 
 - Amazon SQS: https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html
 - LocalStack SQS: https://docs.localstack.cloud/aws/services/sqs/
-- AWS Step Functions — callback con task token: https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html
+- AWS Step Functions: callback con task token: https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html
 
 ## Related documents
 
 - [`0004-localstack-terraform.md`](0004-localstack-terraform.md)
 - [`0005-no-automatic-fallbacks.md`](0005-no-automatic-fallbacks.md)
 - [`../runbooks/document-pipeline.md`](../runbooks/document-pipeline.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§9)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§9)

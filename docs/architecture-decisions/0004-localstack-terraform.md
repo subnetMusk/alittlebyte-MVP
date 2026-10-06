@@ -1,4 +1,4 @@
-# ADR 0004 — Emulazione AWS locale con LocalStack e Terraform
+# ADR 0004: Emulazione AWS locale con LocalStack e Terraform
 
 Status: Accepted, implemented
 Date: 2026-06-08
@@ -19,6 +19,12 @@ AWS risiedono sotto `infra/modules`.
 
 L'applicazione parla con i servizi AWS, reali o emulati, **senza cambiare codice**: cambiano solo
 endpoint e credenziali (vedi [ADR 0005](0005-no-automatic-fallbacks.md)).
+
+## Aggiornamento (2026-10-05)
+
+`infra/modules` e `infra/aws` non hanno mai contenuto moduli né risorse, solo due README segnaposto, e
+sono stati rimossi. Il Terraform resta solo in `infra/localstack`; le condizioni per scriverne uno per
+AWS reale sono in [`../architecture/final-architecture.md`](../architecture/final-architecture.md#percorso-verso-aws-reale).
 
 ## Consequences
 
@@ -46,11 +52,11 @@ endpoint e credenziali (vedi [ADR 0005](0005-no-automatic-fallbacks.md)).
 ## References
 
 - Terraform AWS provider: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
-- LocalStack — integrazione Terraform: https://docs.localstack.cloud/aws/integrations/infrastructure-as-code/terraform/
+- LocalStack: integrazione Terraform: https://docs.localstack.cloud/aws/integrations/infrastructure-as-code/terraform/
 - AWS Step Functions con Terraform: https://docs.aws.amazon.com/step-functions/latest/dg/terraform-sfn.html
 
 ## Related documents
 
 - [`0003-sqs-instead-of-redis-queue.md`](0003-sqs-instead-of-redis-queue.md)
 - [`../runbooks/local-development.md`](../runbooks/local-development.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§5)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§5)

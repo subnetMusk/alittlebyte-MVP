@@ -1,92 +1,80 @@
-# Documentazione MVP - aLittleByte
+# Documentazione
 
-Documentazione tecnica della MVP sviluppata nel contesto progettuale Eggon/NEXUM.
+Punto d'ingresso alla documentazione tecnica della MVP. Per il contesto del progetto, l'avvio rapido
+e le estensioni del fork vedi il [README del repository](../README.md).
 
-Punto d'ingresso alla documentazione tecnica. Se è la prima volta che apri il progetto, segui
-il percorso di lettura qui sotto; le sezioni successive sono un riferimento tematico.
+## Da dove partire
 
-Per setup e avvio rapido vedi il [README di progetto](../README.md).
+1. [`mvp-scope.md`](mvp-scope.md): cosa fa e cosa non fa la MVP, area per area.
+2. [`architecture/final-architecture.md`](architecture/final-architecture.md): container, confine
+   fra LocalStack e AWS reale, limiti rispetto alla produzione.
+3. [`runbooks/local-development.md`](runbooks/local-development.md): avvio, verifiche e struttura
+   del repository.
 
-## Fonti di verità documentali
+Ogni tema ha un solo documento di riferimento:
 
-Per evitare informazioni duplicate o divergenti, ogni tema ha **un** documento di riferimento:
-
-| Tema | Documento di riferimento |
+| Tema | Documento |
 | --- | --- |
-| Perimetro funzionale della MVP | [`mvp-scope.md`](mvp-scope.md) |
-| Stato implementativo reale | [`IMPLEMENTATION_OVERVIEW.md`](IMPLEMENTATION_OVERVIEW.md) |
-| Decisioni architetturali | [`architecture-decisions/`](architecture-decisions/README.md) |
-| Tracciabilità rispetto al Capitolato | [`architecture/capitolato-traceability.md`](architecture/capitolato-traceability.md) |
+| Perimetro funzionale | [`mvp-scope.md`](mvp-scope.md) |
 | Architettura runtime | [`architecture/final-architecture.md`](architecture/final-architecture.md) |
-| Struttura del repository | [`architecture/repository-structure.md`](architecture/repository-structure.md) |
-| Setup e avvio locale | [README di progetto](../README.md) e [`runbooks/local-development.md`](runbooks/local-development.md) |
-| Sicurezza applicativa | [`security/`](security/) |
-| Operatività e troubleshooting | [`runbooks/`](runbooks/) |
-| Gap production-like | [`IMPLEMENTATION_OVERVIEW.md`](IMPLEMENTATION_OVERVIEW.md) (§18–19) e i mapping [ASVS](security/owasp-asvs-mapping.md) / [Well-Architected](architecture/aws-well-architected-mapping.md) |
+| Backend esagonale | [`architecture/backend-hexagonal.md`](architecture/backend-hexagonal.md) |
+| Frontend e sistema visivo | [`architecture/frontend.md`](architecture/frontend.md) |
+| Decisioni architetturali | [`architecture-decisions/`](architecture-decisions/README.md) |
+| Avvio, verifiche, struttura del repository | [`runbooks/local-development.md`](runbooks/local-development.md) |
+| Osservabilità | [`runbooks/observability.md`](runbooks/observability.md) |
+| CI/CD e quality gate | [`runbooks/ci-cd.md`](runbooks/ci-cd.md) |
+| Sicurezza | [`security/`](#sicurezza) |
+| Materiale del corso, archiviato | [`archive/`](archive/README.md) |
 
-## Percorso di lettura consigliato
+## Architettura
 
-1. **[Perimetro funzionale](mvp-scope.md)** — cosa fa (e cosa non fa) la MVP, area per area.
-2. **[Panoramica implementativa](IMPLEMENTATION_OVERVIEW.md)** — come è costruito l'applicativo.
-3. **[Struttura del repository](architecture/repository-structure.md)** — dove sta cosa.
-4. **[Architettura finale](architecture/final-architecture.md)** — vista d'insieme di runtime e infrastruttura.
-5. **[Tracciabilità dal Capitolato](architecture/capitolato-traceability.md)** — perché ogni scelta tecnica, con citazione del requisito.
+- [Architettura runtime](architecture/final-architecture.md): container, LocalStack e AWS reale,
+  percorso verso AWS, limiti rispetto alla produzione.
+- [Backend esagonale](architecture/backend-hexagonal.md): porte, adapter, pattern e verifica della
+  Dependency Rule.
+- [Frontend](architecture/frontend.md): ViewModel, client SSE, sistema visivo.
+- [AWS Well-Architected](architecture/aws-well-architected-mapping.md): pilastri e relative evidenze.
+- [Valutazione della Row-Level Security](architecture/postgres-rls-assessment.md).
+- [Architecture Decision Records](architecture-decisions/README.md), compreso il
+  [profilo di esecuzione locale](architecture-decisions/0014-local-execution-profile.md) aggiunto dal
+  fork.
 
-## Architettura e decisioni
+## Runbook
 
-- [Architettura finale](architecture/final-architecture.md) — runtime, dati, workflow, osservabilità.
-- [Architecture Decision Records](architecture-decisions/README.md) — le decisioni architetturali e il loro razionale.
-- [Tracciabilità dal Capitolato](architecture/capitolato-traceability.md) — mappatura requisiti → scelte tecniche.
-- [AWS Well-Architected Mapping](architecture/aws-well-architected-mapping.md) — aderenza ai pilastri AWS.
-- [Valutazione RLS PostgreSQL](architecture/postgres-rls-assessment.md) — analisi del Row-Level Security.
-- Diagrammi sorgente in [`architecture/diagrams/`](architecture/diagrams/): l'architettura
-  d'insieme è in draw.io ([`final-architecture.drawio`](architecture/diagrams/final-architecture.drawio),
-  export [SVG](architecture/diagrams/final-architecture.drawio.svg) con loghi incorporati), ed è inclusa
-  in [Architettura finale](architecture/final-architecture.md#diagramma-dellarchitettura). I diagrammi
-  Draw.io di dettaglio coprono [ambiente locale/provisioning](architecture/diagrams/02_ambiente_locale_provisioning.drawio),
-  [frontend/contratto API](architecture/diagrams/03_frontend_spa_contratto_api.drawio),
-  [edge/runtime/API](architecture/diagrams/04_edge_runtime_backend_api.drawio),
-  [dati/storage/protezione](architecture/diagrams/05_dati_storage_protezione.drawio),
-  [workflow AI/OCR](architecture/diagrams/06_workflow_async_ai_ocr.drawio) e
-  [osservabilità](architecture/diagrams/07_osservabilita.drawio), con export PNG/SVG accanto al sorgente.
-  I Mermaid residui restano nei punti in cui servono come overview o sequenze operative,
-  inclusi [IMPLEMENTATION_OVERVIEW](IMPLEMENTATION_OVERVIEW.md) e
-  [dlq-recovery](runbooks/dlq-recovery.md).
-
-## Operazioni (runbook)
-
-- [Sviluppo locale production-like](runbooks/local-development.md) — avvio e uso dello stack.
-- [Pipeline documentale](runbooks/document-pipeline.md) — flusso Co-Pilot end-to-end.
-- [Osservabilità](runbooks/observability.md) — metriche, trace, log, dashboard, alert.
-- [DLQ e recovery](runbooks/dlq-recovery.md) — gestione job falliti e ripristino.
-- [Backup/restore locale](runbooks/backup-restore-local.md) — PostgreSQL.
-- [CI/CD](runbooks/ci-cd.md) — pipeline e quality gate.
-- [Permessi AWS necessari](runbooks/aws-permissions-needed.md) — per il passaggio ad AWS reale.
-- [Matrice di verifica](operations/verify.md) — come validare il comportamento atteso.
+- [Sviluppo locale](runbooks/local-development.md): avvio, configurazione runtime, worker,
+  verifiche, reset.
+- [Pipeline documentale](runbooks/document-pipeline.md): flusso Co-Pilot, configurazione, fallimenti.
+- [Pipeline delle comunicazioni](runbooks/communication-pipeline.md): flusso AI Assistant,
+  copertine, PDF finale.
+- [Osservabilità](runbooks/observability.md): metriche, log, dashboard, alert.
+- [DLQ e recupero](runbooks/dlq-recovery.md): ispezione delle DLQ e redrive.
+- [Backup e restore locale](runbooks/backup-restore-local.md): PostgreSQL.
+- [CI/CD](runbooks/ci-cd.md): job, sicurezza della pipeline, gate di copertura e di audit.
 
 ## Sicurezza
 
-- [Confine di autenticazione/autorizzazione](security/auth-boundary.md) — identità, RBAC/ABAC.
-- [Matrice permessi IAM](security/iam-permissions-matrix.md) — minimo privilegio sulle risorse.
-- [OWASP ASVS Mapping](security/owasp-asvs-mapping.md) — aderenza ai controlli ASVS.
+- [Confine di autenticazione e autorizzazione](security/auth-boundary.md): identità simulata, ruoli,
+  tenant.
+- [Permessi IAM e accesso ad AWS reale](security/iam-and-aws-permissions.md): matrice di privilegio
+  minimo, OIDC, modalità ibrida.
+- [OWASP ASVS](security/owasp-asvs-mapping.md): controlli, rischi residui, scelte dell'ambiente
+  locale.
 
-## Riferimenti esterni alla cartella `docs/`
+## Fuori da `docs/`
 
-- [`openapi/v1/`](../openapi/v1/) — contratto API OpenAPI (fonte del client generato).
-- [`infra/localstack/`](../infra/localstack/) — Terraform e risorse AWS-like locali.
-- [`docker/`](../docker/) — configurazioni runtime, edge e osservabilità.
-- [`.github/workflows/`](../.github/workflows/) — pipeline CI e quality gate.
+- [`openapi/v1/`](../openapi/v1/README.md): contratto OpenAPI, fonte del client generato.
+- [`infra/localstack/`](../infra/localstack/README.md): Terraform e risorse AWS emulate.
+- [`apps/frontend/`](../apps/frontend/README.md): SPA Angular.
+- [`demo/`](../demo/README.md): PDF e prompt di prova con dati inventati.
+- [`.github/workflows/`](../.github/workflows/): pipeline CI.
 
 ## Terminologia
 
-Per evitare ambiguità ricorrenti, in tutta la documentazione i termini hanno questo significato:
-
-- **Capitolato** — il documento `[NEXUM] BRD-FASE02-2025` (Business Requirements Document, C5).
-  È il **documento di riferimento per i requisiti di business**.
-- **ADR** — *Architecture Decision Record*: una decisione architetturale registrata in
-  [`architecture-decisions/`](architecture-decisions/README.md). **Non** indica «Analisi dei
-  Requisiti»; i requisiti stanno nel Capitolato.
-- **MVP** — questa MVP: ambiente locale e riproducibile che emula i servizi AWS
-  tramite LocalStack, non un deploy di produzione.
-- **AWS-like / emulato** — servizio AWS riprodotto in locale via LocalStack (es. SQS, S3, KMS,
-  Step Functions); stesso modello di interazione, infrastruttura non gestita.
+- **MVP**: l'applicazione di questo repository, eseguita in un ambiente locale riproducibile che
+  emula AWS con LocalStack; non è un deploy di produzione.
+- **Emulato**: servizio AWS riprodotto in locale da LocalStack (SQS, S3, KMS, Step Functions, ...),
+  con lo stesso modello di interazione ma senza infrastruttura gestita.
+- **ADR**: *Architecture Decision Record*, in [`architecture-decisions/`](architecture-decisions/README.md).
+- **Capitolato**: il documento dei requisiti di business proposto da Eggon (`[NEXUM]
+  BRD-FASE02-2025`). Gli identificativi UC-* e RF-* citati nel codice vengono dall'Analisi dei
+  Requisiti del corso.

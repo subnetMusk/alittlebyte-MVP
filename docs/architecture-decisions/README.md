@@ -4,27 +4,31 @@ In questo repository **ADR** indica esclusivamente *Architecture Decision Record
 registrazione breve e datata di una decisione architetturale significativa, del suo contesto
 e delle sue conseguenze.
 
-> **Nota terminologica.** «ADR» **non** è l'abbreviazione di «Analisi dei Requisiti». Il
-> documento di riferimento per i requisiti di business è il **Capitolato**
-> (`[NEXUM] BRD-FASE02-2025`); la corrispondenza tra requisiti e scelte tecniche è in
-> [`../architecture/capitolato-traceability.md`](../architecture/capitolato-traceability.md).
+> **Nota terminologica.** «ADR» non sta per «Analisi dei Requisiti», il documento del corso che
+> raccoglieva i casi d'uso (UC-*) e i requisiti (RF-*, RVC-*) citati nel codice. I requisiti di
+> business venivano dal Capitolato C5 (`[NEXUM] BRD-FASE02-2025`); la corrispondenza fra requisiti e
+> scelte tecniche è archiviata in
+> [`../archive/capitolato-traceability.md`](../archive/capitolato-traceability.md).
 
 ## Formato
 
 Ogni ADR segue la struttura [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions),
 estesa con alcuni campi per la tracciabilità verso la codebase:
 
-- **Status** — `Proposed` · `Accepted` · `Superseded` · `Deprecated` (con eventuale `implemented`/`implemented baseline`)
-- **Date** — data della decisione
-- **Context** — forze in gioco e vincoli al momento della decisione
-- **Decision** — la scelta adottata
-- **Consequences** — effetti positivi e negativi che ne derivano
-- **Alternatives considered** — le opzioni realistiche valutate e perché scartate
-- **Implementation evidence** — dove la decisione si vede nella codebase (path)
-- **Related documents** — ADR e documenti correlati che approfondiscono il tema
+- **Status**: `Proposed` · `Accepted` · `Superseded` · `Deprecated`, con l'indicazione di cosa è implementato
+- **Date**: data della decisione
+- **Context**: forze in gioco e vincoli al momento della decisione
+- **Decision**: la scelta adottata
+- **Consequences**: effetti positivi e negativi che ne derivano
+- **Alternatives considered**: le opzioni realistiche valutate e perché scartate
+- **Implementation evidence**: dove la decisione si vede nella codebase (path)
+- **Related documents**: ADR e documenti correlati che approfondiscono il tema
 
-Gli ADR sono immutabili: una decisione che cambia non si riscrive, si **supera** con un nuovo
-ADR che referenzia il precedente. La numerazione è progressiva e a quattro cifre
+Una decisione che cambia non si riscrive: si **supera** con un nuovo ADR che referenzia il
+precedente. Due eccezioni, sempre dichiarate nel testo: una sezione «Aggiornamento» datata quando
+una parte della decisione non è stata realizzata (ADR 0004 e 0006), e lo spostamento in altri documenti di
+specifiche o registri di lavoro che appesantivano l'ADR senza cambiarne la decisione (ADR 0010 e
+0012, vedi [`../architecture/`](../architecture/) e [`../archive/`](../archive/README.md)). La numerazione è progressiva e a quattro cifre
 (`NNNN-titolo-in-kebab-case.md`).
 
 ## Indice delle decisioni
@@ -36,9 +40,18 @@ ADR che referenzia il precedente. La numerazione è progressiva e a quattro cifr
 | [0003](0003-sqs-instead-of-redis-queue.md) | Code asincrone su SQS; Redis solo per cache/sessioni | Accepted, implemented |
 | [0004](0004-localstack-terraform.md) | Emulazione AWS locale con LocalStack + Terraform | Accepted, implemented |
 | [0005](0005-no-automatic-fallbacks.md) | Nessun fallback automatico dei servizi AI: stato `failed` esplicito | Accepted, implemented |
-| [0006](0006-observability-and-audit.md) | Osservabilità (OTel/Prometheus) e audit trail append-only | Accepted, implemented baseline |
+| [0006](0006-observability-and-audit.md) | Osservabilità (metriche, alert, log) e audit trail append-only | Accepted; parte sulle trace superata (aggiornamento 2026-10-05) |
 | [0007](0007-authn-authz-boundary.md) | Confine authn/authz: IdP simulato, RBAC/ABAC server-side | Accepted, implemented baseline |
 | [0008](0008-angular-frontend-static-serving.md) | Frontend Angular e serving statico S3 locale + emulatore CDN locale (Nginx) | Accepted, implemented |
+| [0009](0009-communication-async-pipeline-and-cover-storage.md) | Pipeline asincrona delle comunicazioni e copertine su storage a oggetti | Accepted, implemented |
+| [0010](0010-hexagonal-architecture-documents-communications.md) | Architettura esagonale (ports & adapters) per i domini Documents e Communications | Accepted, implemented |
+| [0011](0011-frontend-presentation-model-and-sse-client.md) | ViewModel puro (Presentation Model) e client SSE su `fetch` | Accepted, implemented |
+| [0012](0012-frontend-design-system-and-ui-language.md) | Sistema visivo e linguaggio dell'interfaccia della SPA | Accepted, implemented |
+| [0013](0013-per-field-ocr-confidence.md) | Confidenza per campo invece che media di pagina | Accepted, implemented |
+| [0014](0014-local-execution-profile.md) | Profilo di esecuzione locale per AI e OCR (decisione del fork, dopo l'MVP) | Accepted, implemented |
+
+Dal 0014 la numerazione è propria del fork. Gli ADR 0014 e 0015 della versione ufficiale, che
+sostituiscono lo stack di osservabilità con metriche CloudWatch, non sono stati adottati.
 
 ## Aggiungere un ADR
 

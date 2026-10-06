@@ -37,7 +37,12 @@ return [
 
     'bedrock' => [
         'model_id' => env('BEDROCK_MODEL_ID'),
+        'image_model_id' => env('BEDROCK_IMAGE_MODEL_ID', env('MVP_BEDROCK_IMAGE_MODEL_ID')),
         'region' => env('BEDROCK_REGION', env('AWS_DEFAULT_REGION', 'eu-north-1')),
+        // I modelli immagine sono attivi in un insieme di region diverso da
+        // quelli testo: la copertina usa un client dedicato, con fallback sulla
+        // region del modello testo quando non specificata.
+        'image_region' => env('BEDROCK_IMAGE_REGION') ?: env('BEDROCK_REGION', env('AWS_DEFAULT_REGION', 'eu-north-1')),
         'endpoint' => env('BEDROCK_ENDPOINT') === 'not-configured' ? null : env('BEDROCK_ENDPOINT'),
         // Shared real-AWS credentials (same set used by real S3 and Textract).
         // Left empty in LocalStack mode, where the SDK default chain applies.
@@ -47,6 +52,11 @@ return [
             'token' => env('AWS_REAL_SESSION_TOKEN'),
         ],
         'mvp_confidence_threshold' => (int) env('MVP_CONFIDENCE_THRESHOLD', 80),
+        // Soglia propria del codice fiscale, piu' alta di quella generale: un
+        // carattere letto male assegna il documento a un'altra persona. Non e'
+        // il «mapping CF >= 99%» del Capitolato, che e' un obiettivo di
+        // accuratezza sulla popolazione e non una soglia per documento.
+        'mvp_fiscal_code_confidence_threshold' => (int) env('MVP_FISCAL_CODE_CONFIDENCE_THRESHOLD', 95),
     ],
 
     'workflow' => [
@@ -55,13 +65,61 @@ return [
         'state_machine_arn' => env('DOCUMENT_PIPELINE_STATE_MACHINE_ARN'),
         'task_queue_url' => env('DOCUMENT_PIPELINE_TASK_QUEUE_URL'),
         'dlq_queue_url' => env('SQS_DLQ_URL'),
+        // Pipeline comunicazioni: coda e DLQ separate da quelle documentali, cosi'
+        // il backlog di un dominio non ritarda l'altro.
+        'communications_state_machine_arn' => env('COMMUNICATION_PIPELINE_STATE_MACHINE_ARN'),
+        'communications_task_queue_url' => env('COMMUNICATION_PIPELINE_TASK_QUEUE_URL'),
+        'communications_dlq_queue_url' => env('COMMUNICATION_PIPELINE_DLQ_URL'),
     ],
 
+    // Solo i parametri del client: gli URL delle code stanno sotto "workflow",
+    // una voce per pipeline, per non avere due sorgenti della stessa coda.
     'sqs' => [
         'region' => env('AWS_DEFAULT_REGION', 'eu-north-1'),
         'endpoint' => env('SQS_ENDPOINT'),
-        'queue_url' => env('DOCUMENT_PIPELINE_TASK_QUEUE_URL'),
-        'dlq_queue_url' => env('SQS_DLQ_URL'),
+    ],
+
+    // Provider del profilo di esecuzione locale (ADR 0014). Gli endpoint di
+    // default sono quelli dell'host visto da Docker; nessuno e' usato nel
+    // profilo standard.
+    'local_llm' => [
+        'base_url' => env('LOCAL_LLM_BASE_URL', 'http://host.docker.internal:11434'),
+        'model' => env('LOCAL_LLM_MODEL', 'qwen3.5:9b'),
+        // Il primo caricamento del modello in memoria puo' superare il minuto.
+        'timeout_seconds' => (int) env('LOCAL_LLM_TIMEOUT_SECONDS', 300),
+        // Quanto Ollama tiene il modello in memoria dopo una risposta: una
+        // durata come "5m" o dei secondi, 0 lo scarica subito, vuoto lascia il
+        // default di Ollama. Con la copertina da ComfyUI su una GPU da 8 GB, 0
+        // libera la VRAM per la generazione dell'immagine.
+        'keep_alive' => env('LOCAL_LLM_KEEP_ALIVE'),
+    ],
+
+    'local_ocr' => [
+        'languages' => 'ita+eng',
+        'timeout_seconds' => 120,
+    ],
+
+    'local_cover' => [
+        'provider' => env('LOCAL_COVER_PROVIDER', 'mock'),
+        'comfyui' => [
+            'base_url' => env('COMFYUI_BASE_URL', 'http://host.docker.internal:8188'),
+            // Workflow in formato API, modelli compresi: un nome di file indica
+            // uno di quelli versionati in resources/ai/comfyui, un percorso un
+            // file qualsiasi dell'immagine. Il predefinito usa SDXL Lightning;
+            // Z-Image-Turbo in GGUF richiede molta piu' memoria.
+            'workflow' => str_contains((string) env('COMFYUI_WORKFLOW', ''), '/')
+                ? env('COMFYUI_WORKFLOW')
+                : resource_path('ai/comfyui/'.(env('COMFYUI_WORKFLOW') ?: 'sdxl-lightning.json')),
+            // Su una GPU da 8 GB SDXL Lightning resta sotto i 20 secondi,
+            // Z-Image-Turbo richiede minuti. Il limite resta sotto il timeout
+            // del task GenerateCover dell'ASL (300 s, con un retry su timeout),
+            // lasciando margine per salvare la copertina e chiudere il task.
+            'timeout_seconds' => 270,
+            // Dopo ogni copertina ComfyUI scarica i modelli, come Ollama con
+            // keep_alive 0: su una GPU condivisa i modelli residenti spingono
+            // il modello testuale nella RAM di sistema.
+            'free_memory' => (bool) env('COMFYUI_FREE_MEMORY', true),
+        ],
     ],
 
     'textract' => [

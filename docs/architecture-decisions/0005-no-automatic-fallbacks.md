@@ -1,4 +1,4 @@
-# ADR 0005 — Nessun fallback automatico dei servizi AI
+# ADR 0005: Nessun fallback automatico dei servizi AI
 
 Status: Accepted, implemented
 Date: 2026-06-08
@@ -41,20 +41,20 @@ vive nell'infrastruttura (LocalStack), non in branch condizionali del codice app
 
 ## Implementation evidence
 
-- Stato `failed` esplicito e `workflow_failure_reason` in `app/Copilot/Workflow/Services/DocumentWorkflowService.php`.
-- Errori Bedrock → `AiServiceException` → 502 in `app/Copilot/Ai/BedrockService.php`.
+- Stato `failed` esplicito e `workflow_failure_reason` in `app/Mvp/Documents/Services/DocumentWorkflowService.php`.
+- Errori Bedrock → `AiServiceException` → 502 in `app/Mvp/Ai/BedrockService.php`.
 - Guard fail-fast Textract/`real_s3` in `DocumentWorkflowService::start()`; assert chiavi
-  obbligatorie in `app/Copilot/Support/RuntimeConfigurationLoader.php`.
+  obbligatorie in `app/Mvp/Support/RuntimeConfigurationLoader.php`.
 - ASL: rami `Catch` → stato `Failed` in `infra/localstack/state-machines/document-pipeline.asl.json`.
 - Alert `BedrockFailureRateHigh`, `TextractFailureRateHigh`, `StepFunctionExecutionFailed`.
 
 ## References
 
-- AWS Well-Architected — reliability pillar: https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/welcome.html
+- AWS Well-Architected: reliability pillar: https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/welcome.html
 - OWASP ASVS: https://owasp.org/www-project-application-security-verification-standard/
 
 ## Related documents
 
 - [`0003-sqs-instead-of-redis-queue.md`](0003-sqs-instead-of-redis-queue.md)
 - [`0006-observability-and-audit.md`](0006-observability-and-audit.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§10)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§10)

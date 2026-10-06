@@ -1,13 +1,13 @@
 # OpenAPI v1
 
-This directory contains the versioned JSON API contract consumed by the Angular SPA.
+Contratto versionato dell'API JSON usata dalla SPA Angular. Il file canonico è
+`alittlebyte-mvp-api.yaml`.
 
-The canonical file is `alittlebyte-mvp-api.yaml`.
-
-Regenerate the TypeScript client with:
+Per rigenerare il client TypeScript:
 
 ```bash
 make openapi-generate
 ```
 
-Do not edit generated files under `apps/frontend/src/api/generated` manually.
+I file generati in `apps/frontend/src/api/generated` non vanno modificati a mano: la CI fallisce se
+non corrispondono al contratto.

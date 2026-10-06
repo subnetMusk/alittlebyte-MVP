@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from "@angular/core";
 import { retry } from "rxjs";
 import { AlittlebyteMVPAPIService } from "../../../api/generated/mvp-api";
-import type { MvpState, SubDocument } from "../../../api/generated/model";
+import type { Metric, MvpState, SubDocument } from "../../../api/generated/model";
 import { getApiErrorMessage } from "../errors/api-error";
 
 /**
@@ -18,7 +18,6 @@ export class MvpStateStore {
   private readonly _state = signal<MvpState | null>(null);
   private readonly _loading = signal(false);
   private readonly _error = signal<string | null>(null);
-  private loadRequested = false;
 
   readonly state = this._state.asReadonly();
   readonly loading = this._loading.asReadonly();
@@ -26,21 +25,59 @@ export class MvpStateStore {
 
   readonly documents = computed<SubDocument[]>(() => this._state()?.copilot.documents ?? []);
   readonly history = computed(() => this._state()?.assistant.history ?? []);
+  readonly promptConfigurations = computed(() => this._state()?.assistant.promptConfigurations ?? []);
   readonly assistantMetrics = computed(() => this._state()?.assistant.metrics ?? []);
   readonly copilotMetrics = computed(() => this._state()?.copilot.metrics ?? []);
 
-  /** Carica lo stato una sola volta (al primo montaggio della shell). */
+  /**
+   * Valore di una metrica per chiave stabile. Le metriche sono conteggi
+   * calcolati dal backend sull'intero tenant: vanno lette da qui e non
+   * ricalcolate sugli elenchi, che sono finestre parziali (history 10,
+   * documents 40) e darebbero numeri sbagliati appena i dati crescono.
+   */
+  metric(key: string): number {
+    const found = this.metricEntry(key);
+
+    return typeof found?.value === "number" ? found.value : 0;
+  }
+
+  /**
+   * Metrica completa per chiave, oppure `null` finche' lo stato non e' stato
+   * caricato o se la chiave non esiste.
+   *
+   * Distinto da `metric()`, che collassa l'assenza su `0`: una scheda che
+   * mostra `0` durante il caricamento afferma un dato che non ha ancora, ed e'
+   * esattamente cio' che i KPI della Overview facevano. Serve anche a leggere
+   * `history`, che il conteggio da solo non porta.
+   */
+  metricEntry(key: string): Metric | null {
+    return (
+      [...this.assistantMetrics(), ...this.copilotMetrics()].find((entry) => entry.key === key) ?? null
+    );
+  }
+
+  /** Carica lo stato al primo montaggio; ritenta se il primo tentativo e' fallito. */
   loadOnce(): void {
-    if (this.loadRequested) {
+    if (this._loading() || this._state() !== null) {
       return;
     }
 
-    this.loadRequested = true;
     this.reload();
   }
 
-  /** Ricarica lo stato applicando una sola retry per errori temporanei. */
+  /**
+   * Ricarica lo stato applicando una sola retry per errori temporanei.
+   *
+   * Ignora una chiamata mentre una richiesta e' gia' in volo (es. un doppio
+   * click su "Riprova"): senza questa guardia partirebbero due `GET /state`
+   * in parallelo, l'ultima risposta vincerebbe comunque ma la richiesta in
+   * piu' sarebbe sprecata — la stessa guardia che `loadOnce()` applica gia'.
+   */
   reload(): void {
+    if (this._loading()) {
+      return;
+    }
+
     this._loading.set(true);
     this._error.set(null);
 

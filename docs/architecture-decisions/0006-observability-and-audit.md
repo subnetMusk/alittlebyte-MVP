@@ -1,6 +1,6 @@
-# ADR 0006 — Osservabilità e audit trail
+# ADR 0006: Osservabilità e audit trail
 
-Status: Accepted, implemented baseline
+Status: Accepted, implementata per metriche, audit e log; la parte sulle trace è superata (vedi Aggiornamento)
 Date: 2026-06-08
 
 ## Context
@@ -26,7 +26,26 @@ Alloy.
 - I fallimenti della pipeline devono conservare contesto sufficiente al supporto senza trapelare
   dati.
 - Le metriche seguono i golden signal di Google SRE: latency, traffic, errors, saturation.
-- L'OTel Collector resta il confine vendor-neutral per l'export futuro di trace e log OTLP.
+- L'OTel Collector resta il confine vendor-neutral per l'export futuro di trace e log OTLP, ma per
+  le metriche è un gateway di **trasporto**: non riscrive i nomi (`add_metric_suffixes: false`).
+  Delegargli la normalizzazione significherebbe far dipendere i nomi delle serie da un default
+  upstream, che è come i pannelli OCR sono rimasti vuoti pur avendo il dato.
+- Le metriche di dominio sono dichiarate prima di essere osservate (`DomainMetricCatalog`): una
+  serie esiste a zero dal primo scrape, quindi i pannelli non mostrano "No data" su un ambiente
+  appena avviato e le regole con `== 0` hanno qualcosa su cui valutare. Il costo è che aggiungere
+  una metrica richiede due modifiche invece di una, ed è voluto: è il punto in cui il disallineamento
+  fra ciò che si emette e ciò che si interroga diventa visibile.
+- Un fallimento di raccolta degrada la singola famiglia di metriche, non l'intera esposizione.
+
+## Aggiornamento (2026-10-05)
+
+La parte della decisione sulle trace non è mai stata realizzata: l'applicazione non include un SDK
+OpenTelemetry, quindi nessun componente produceva trace e Tempo restava vuoto. Tempo, il receiver
+OTLP e le pipeline `traces` e `logs` del Collector sono stati rimossi. Il Collector resta il gateway
+delle metriche. I log dei container arrivano a Loki tramite Alloy, che li scopre per label
+(`com.alittlebyte.observability.logs`) invece che per nome del progetto Compose. La correlazione fra
+componenti passa dal correlation ID nei log, non da un contesto W3C Trace Context. Un tracing
+distribuito richiederebbe un nuovo ADR.
 
 ## Alternatives considered
 
@@ -37,17 +56,24 @@ Alloy.
 
 ## Implementation evidence
 
-- Correlazione: `app/Http/Middleware/CorrelateRequests.php`; audit: `app/Copilot/Audit/Services/AuditLogger.php`
+- Correlazione: `app/Http/Middleware/CorrelateRequests.php`; audit: `app/Mvp/Audit/Services/AuditLogger.php`
   e migrazione `audit_events` (append-only).
-- Metriche: `app/Copilot/Observability/MetricsRecorder.php`, `PrometheusExporter.php`, endpoint
+- Metriche: `app/Mvp/Observability/MetricsRecorder.php`, `PrometheusExporter.php`,
+  `DomainMetricCatalog.php`, `DomainMetricDefinition.php`, `DlqDepthProbe.php`, endpoint
   `/internal/metrics`.
+- Dashboard: ciascuna dichiara in testa la domanda a cui risponde e gli alert correlati; la
+  struttura segue i golden signal per l'API, l'imbuto di pipeline per i due domini e il metodo
+  USE per le code (vedi `../runbooks/observability.md`).
 - Config osservabilità: `docker/otel-collector/`, `docker/prometheus/{prometheus.yml,rules/}`,
-  `docker/tempo/`, `docker/loki/`, `docker/alloy/`, `docker/grafana/` (5 dashboard, 10 alert rule).
-- Validazione config in CI: `make observability-config` (`promtool`, `otelcol validate`).
+  `docker/alertmanager/`, `docker/loki/`, `docker/alloy/`, `docker/grafana/` (6 dashboard, 16 alert rule).
+- Validazione config in CI: `make observability-config` (`otelcol validate`, `promtool`, `amtool`,
+  `loki -verify-config`, `alloy fmt --test`), più uno smoke che interroga Loki a stack avviato.
+- Contratto metriche: `tests/Feature/ObservabilityContractTest.php` più l'helper
+  `tests/Support/MetricsContract.php`, eseguiti da `make verify-backend`.
 
 ## References
 
-- Google SRE — Monitoring Distributed Systems: https://sre.google/sre-book/monitoring-distributed-systems/
+- Google SRE: Monitoring Distributed Systems: https://sre.google/sre-book/monitoring-distributed-systems/
 - OpenTelemetry docs: https://opentelemetry.io/docs/
 - OpenTelemetry logs: https://opentelemetry.io/docs/specs/otel/logs/
 
@@ -55,4 +81,4 @@ Alloy.
 
 - [`0005-no-automatic-fallbacks.md`](0005-no-automatic-fallbacks.md)
 - [`../runbooks/observability.md`](../runbooks/observability.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§14)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§14, archiviato)

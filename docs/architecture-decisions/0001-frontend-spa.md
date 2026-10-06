@@ -1,6 +1,6 @@
-# ADR 0001 — Frontend come SPA
+# ADR 0001: Frontend come SPA
 
-Status: Superseded by [0008 — Frontend Angular e serving statico LocalStack](0008-angular-frontend-static-serving.md)
+Status: Superseded by [0008; Frontend Angular e serving statico LocalStack](0008-angular-frontend-static-serving.md)
 Date: 2026-06-08
 
 > Historical ADR. This records the original frontend decision; the active frontend decision is ADR 0008.
@@ -47,4 +47,4 @@ ma non deve mai essere la fonte di verità per il controllo degli accessi.
 
 - [`0002-laravel-api-json.md`](0002-laravel-api-json.md)
 - [`0007-authn-authz-boundary.md`](0007-authn-authz-boundary.md)
-- [`../IMPLEMENTATION_OVERVIEW.md`](../IMPLEMENTATION_OVERVIEW.md) (§5, §11)
+- [`../archive/implementation-overview-2026-08-15.md`](../archive/implementation-overview-2026-08-15.md) (§5, §11)
