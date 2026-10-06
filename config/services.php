@@ -115,6 +115,10 @@ return [
             // del task GenerateCover dell'ASL (300 s, con un retry su timeout),
             // lasciando margine per salvare la copertina e chiudere il task.
             'timeout_seconds' => 270,
+            // Dopo ogni copertina ComfyUI scarica i modelli, come Ollama con
+            // keep_alive 0: su una GPU condivisa i modelli residenti spingono
+            // il modello testuale nella RAM di sistema.
+            'free_memory' => (bool) env('COMFYUI_FREE_MEMORY', true),
         ],
     ],
 

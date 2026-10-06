@@ -41,6 +41,7 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
         private readonly string $workflowPath,
         private readonly int $timeoutSeconds,
         private readonly int $pollIntervalMilliseconds = 2000,
+        private readonly bool $releaseMemoryAfterUse = true,
     ) {}
 
     public function generate(string $prompt, string $tone, string $style, ?string $modelImagePrompt): array
@@ -78,52 +79,59 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
         // Una sola scadenza per invio, attesa e download: il task GenerateCover
         // dell'ASL ha un proprio timeout, che questo deve precedere.
         $deadline = microtime(true) + $this->timeoutSeconds;
+        $promptId = '';
 
         try {
-            $promptId = (string) $this->client($deadline)
-                ->post('/prompt', ['prompt' => $graph, 'client_id' => self::CLIENT_ID])
-                ->throw()
-                ->json('prompt_id');
-
-            if ($promptId === '') {
-                return $this->failure('Copertina non disponibile: ComfyUI non ha accettato il workflow.', 'invalid_response');
-            }
-
             try {
-                $outcome = $this->waitForImage($promptId, $deadline);
-            } catch (RequestException $e) {
-                $this->cancel($promptId);
+                $promptId = (string) $this->client($deadline)
+                    ->post('/prompt', ['prompt' => $graph, 'client_id' => self::CLIENT_ID])
+                    ->throw()
+                    ->json('prompt_id');
 
-                throw $e;
-            }
-
-            if (isset($outcome['failure'])) {
-                if ($outcome['pending']) {
-                    $this->cancel($promptId);
+                if ($promptId === '') {
+                    return $this->failure('Copertina non disponibile: ComfyUI non ha accettato il workflow.', 'invalid_response');
                 }
 
-                return $this->failure(...$outcome['failure']);
+                try {
+                    $outcome = $this->waitForImage($promptId, $deadline);
+                } catch (RequestException $e) {
+                    $this->cancel($promptId);
+
+                    throw $e;
+                }
+
+                if (isset($outcome['failure'])) {
+                    if ($outcome['pending']) {
+                        $this->cancel($promptId);
+                    }
+
+                    return $this->failure(...$outcome['failure']);
+                }
+
+                $response = $this->client($deadline)->get('/view', $outcome['image'])->throw();
+            } catch (ConnectionException $e) {
+                Log::warning('ComfyUI unreachable', ['base_url' => $this->baseUrl, 'message' => $e->getMessage()]);
+
+                return $this->failure('Copertina non disponibile: ComfyUI non raggiungibile o senza risposta.', 'model_error');
+            } catch (RequestException $e) {
+                Log::warning('ComfyUI request failed', ['status' => $e->response->status(), 'message' => mb_substr($e->response->body(), 0, 500)]);
+
+                return $this->failure('Copertina non disponibile: ComfyUI ha rifiutato la richiesta.', 'invalid_response');
             }
 
-            $response = $this->client($deadline)->get('/view', $outcome['image'])->throw();
-        } catch (ConnectionException $e) {
-            Log::warning('ComfyUI unreachable', ['base_url' => $this->baseUrl, 'message' => $e->getMessage()]);
+            $bytes = $response->body();
+            $mime = strtok((string) $response->header('Content-Type'), ';') ?: 'image/png';
 
-            return $this->failure('Copertina non disponibile: ComfyUI non raggiungibile o senza risposta.', 'model_error');
-        } catch (RequestException $e) {
-            Log::warning('ComfyUI request failed', ['status' => $e->response->status(), 'message' => mb_substr($e->response->body(), 0, 500)]);
+            if ($bytes === '' || ! str_starts_with($mime, 'image/')) {
+                return $this->failure('Copertina non disponibile: ComfyUI non ha restituito un\'immagine.', 'no_payload');
+            }
 
-            return $this->failure('Copertina non disponibile: ComfyUI ha rifiutato la richiesta.', 'invalid_response');
+            return ['bytes' => $bytes, 'mime' => $mime, 'warning' => null, 'reason' => null];
+        } finally {
+            if ($promptId !== '') {
+                $this->releaseMemory();
+            }
         }
-
-        $bytes = $response->body();
-        $mime = strtok((string) $response->header('Content-Type'), ';') ?: 'image/png';
-
-        if ($bytes === '' || ! str_starts_with($mime, 'image/')) {
-            return $this->failure('Copertina non disponibile: ComfyUI non ha restituito un\'immagine.', 'no_payload');
-        }
-
-        return ['bytes' => $bytes, 'mime' => $mime, 'warning' => null, 'reason' => null];
     }
 
     /**
@@ -192,6 +200,28 @@ final class ComfyUiCoverGenerator implements CoverImageGenerator
     {
         $remainingMicroseconds = (int) (($deadline - microtime(true)) * 1_000_000);
         usleep(max(0, min($this->pollIntervalMilliseconds * 1000, $remainingMicroseconds)));
+    }
+
+    /**
+     * Chiede a ComfyUI di scaricare i modelli dopo la copertina, come
+     * LOCAL_LLM_KEEP_ALIVE=0 fa con Ollama: su una GPU condivisa i modelli
+     * rimasti residenti costringono il modello testuale a riversarsi nella RAM
+     * di sistema. Ricaricarli costa pochi secondi; un errore qui non cambia
+     * l'esito della copertina.
+     */
+    private function releaseMemory(): void
+    {
+        if (! $this->releaseMemoryAfterUse) {
+            return;
+        }
+
+        try {
+            $this->http->baseUrl($this->baseUrl)->timeout(5)->acceptJson()
+                ->post('/free', ['unload_models' => true, 'free_memory' => true])
+                ->throw();
+        } catch (\Throwable $e) {
+            Log::info('ComfyUI memory release failed', ['message' => $e->getMessage()]);
+        }
     }
 
     /**

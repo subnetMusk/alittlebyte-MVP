@@ -25,7 +25,7 @@ dataset('versioned ComfyUI workflows', [
     'sdxl-lightning' => ['sdxl-lightning.json', ['%prompt%', '%negative_prompt%', '%seed%', '%width%', '%height%']],
 ]);
 
-function makeComfyUiGenerator(?string $workflowPath = null, int $timeoutSeconds = 5, string $baseUrl = 'http://comfyui.test:8188'): ComfyUiCoverGenerator
+function makeComfyUiGenerator(?string $workflowPath = null, int $timeoutSeconds = 5, string $baseUrl = 'http://comfyui.test:8188', bool $releaseMemory = true): ComfyUiCoverGenerator
 {
     return new ComfyUiCoverGenerator(
         app(HttpFactory::class),
@@ -34,7 +34,13 @@ function makeComfyUiGenerator(?string $workflowPath = null, int $timeoutSeconds 
         $workflowPath ?? versionedComfyUiWorkflow(),
         $timeoutSeconds,
         pollIntervalMilliseconds: 1,
+        releaseMemoryAfterUse: $releaseMemory,
     );
+}
+
+function sentToComfyUi(string $path): int
+{
+    return Http::recorded(fn (Request $request) => str_ends_with(parse_url($request->url(), PHP_URL_PATH) ?? '', $path))->count();
 }
 
 function comfyUiImageEntry(): array
@@ -52,6 +58,7 @@ function fakeComfyUi(string $imageBytes = "\x89PNG-fake", string $contentType = 
         // La cronologia resta vuota finche' l'esecuzione non e' conclusa.
         'comfyui.test:8188/history/p-1' => Http::sequence()->push([])->push(comfyUiImageEntry()),
         'comfyui.test:8188/view*' => Http::response($imageBytes, 200, ['Content-Type' => $contentType]),
+        'comfyui.test:8188/free' => Http::response(),
     ]);
 }
 
@@ -225,7 +232,7 @@ test('a failed or imageless execution stops the polling at once', function (arra
 
     // Una sola lettura della cronologia: nessuna attesa fino al timeout, e
     // nulla da annullare in ComfyUI.
-    Http::assertSentCount(2);
+    expect(sentToComfyUi('/history/p-1'))->toBe(1);
     Http::assertNotSent(fn (Request $request) => str_ends_with($request->url(), '/interrupt'));
 })->with([
     'esecuzione fallita' => [[
@@ -262,6 +269,38 @@ test('a slow answer from a busy ComfyUI does not stop the wait', function () {
         ->and($historyCalls)->toBe(2);
 });
 
+test('ComfyUI unloads its models after every cover unless configured otherwise', function (bool $releaseMemory, int $expectedReleases) {
+    fakeComfyUi();
+
+    $image = makeComfyUiGenerator(releaseMemory: $releaseMemory)->generate('Ferie', 'Tecnico', 'Aggiornamento breve', null);
+
+    expect($image['reason'])->toBeNull()
+        ->and(sentToComfyUi('/free'))->toBe($expectedReleases);
+
+    if ($expectedReleases > 0) {
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/free')
+            && $request['unload_models'] === true
+            && $request['free_memory'] === true);
+    }
+})->with([
+    'predefinito' => [true, 1],
+    'disattivato' => [false, 0],
+]);
+
+test('a failed release of the models does not change the cover', function () {
+    Http::fake([
+        '*/prompt' => Http::response(['prompt_id' => 'p-1']),
+        '*/history/*' => Http::response(comfyUiImageEntry()),
+        '*/view*' => Http::response("\x89PNG-fake", 200, ['Content-Type' => 'image/png']),
+        '*/free' => Http::response('busy', 500),
+    ]);
+
+    $image = makeComfyUiGenerator()->generate('Ferie', 'Tecnico', 'Aggiornamento breve', null);
+
+    expect($image['reason'])->toBeNull()
+        ->and($image['bytes'])->not->toBeNull();
+});
+
 test('a generation that outlives the timeout is removed from ComfyUI', function () {
     Http::fake([
         '*/prompt' => Http::response(['prompt_id' => 'p-1']),
@@ -269,6 +308,7 @@ test('a generation that outlives the timeout is removed from ComfyUI', function 
         '*/history/*' => fn () => throw new ConnectionException('cURL error 28: Operation timed out'),
         '*/queue' => Http::response(),
         '*/interrupt' => Http::response(),
+        '*/free' => Http::response(),
     ]);
 
     $image = makeComfyUiGenerator(timeoutSeconds: 1)->generate('Ferie', 'Tecnico', 'Aggiornamento breve', null);
@@ -278,6 +318,7 @@ test('a generation that outlives the timeout is removed from ComfyUI', function 
 
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/queue') && $request['delete'] === ['p-1']);
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/interrupt') && $request['prompt_id'] === 'p-1');
+    expect(sentToComfyUi('/free'))->toBe(1);
 });
 
 test('an unusable workflow or base url is reported as not configured and sends nothing', function (Closure $generator) {

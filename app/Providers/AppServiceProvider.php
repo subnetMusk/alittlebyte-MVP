@@ -239,6 +239,7 @@ class AppServiceProvider extends ServiceProvider
                     (string) config('services.local_cover.comfyui.base_url'),
                     (string) config('services.local_cover.comfyui.workflow'),
                     (int) config('services.local_cover.comfyui.timeout_seconds', 270),
+                    releaseMemoryAfterUse: (bool) config('services.local_cover.comfyui.free_memory', true),
                 ),
             };
         });
