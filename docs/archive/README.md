@@ -11,3 +11,4 @@ runbook.
 | [`implementation-overview-2026-08-15.md`](implementation-overview-2026-08-15.md) | Panoramica implementativa della codebase al 15/08/2026 | Fotografia datata: le parti ancora vere sono confluite in `final-architecture.md` |
 | [`capitolato-traceability.md`](capitolato-traceability.md) | Collegamento fra scelte tecniche e requisiti del Capitolato C5 | Materiale per la valutazione del corso |
 | [`adr-0010-implementation-evidence.md`](adr-0010-implementation-evidence.md) | Evidenze implementative dell'ADR 0010, passo per passo | Registro di lavoro, separato dalla decisione |
+| [`diagrams/`](diagrams/) | Diagrammi draw.io del progetto del corso (sorgente `.drawio` ed export PNG e SVG) | Precedono la revisione del fork e mostrano flussi rimossi, come le trace verso Tempo; le viste correnti sono in [`../architecture/diagrams/`](../architecture/diagrams/) |

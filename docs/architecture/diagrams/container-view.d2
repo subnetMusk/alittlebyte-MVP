@@ -1,0 +1,205 @@
+# Vista container della MVP in esecuzione locale: ingresso, applicazione, orchestrazione e dati su
+# LocalStack, worker, servizi AWS reali del profilo standard e provider del profilo local.
+# L'osservabilità ha una vista dedicata (observability-view.d2).
+# Titolo e legenda stanno nella caption Markdown, per non allargare il disegno.
+# Sorgente di container-view.svg.
+# Render: d2 --omit-version --elk-nodeNodeBetweenLayers=30 --elk-edgeNodeBetweenLayers=15 docs/architecture/diagrams/container-view.d2 docs/architecture/diagrams/container-view.svg
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+
+direction: right
+
+classes: {
+  internal: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+      border-radius: 4
+    }
+  }
+  # Nodo-icona con frecce su entrambi i lati: label sotto, su una riga, perché gli attacchi
+  # delle frecce cadano dentro l'icona.
+  icon: {
+    shape: image
+    width: 72
+    height: 72
+  }
+  # Nodo-icona terminale in un layout orizzontale: label a destra, dove non arrivano frecce.
+  icon-leaf: {
+    shape: image
+    width: 72
+    height: 72
+    label.near: outside-right-center
+  }
+  boundary: {
+    label.near: top-left
+    style: {
+      fill: "#F8FAFC"
+      stroke: "#64748B"
+      stroke-width: 1
+      border-radius: 6
+      font-color: "#334155"
+      font-size: 16
+    }
+  }
+  optional-boundary: {
+    label.near: bottom-left
+    style: {
+      fill: "#F1F5F9"
+      stroke: "#64748B"
+      stroke-width: 1
+      stroke-dash: 4
+      border-radius: 6
+      font-color: "#334155"
+      font-size: 16
+    }
+  }
+  sync: {
+    style: {
+      stroke: "#334155"
+      font-color: "#334155"
+    }
+  }
+  async: {
+    style: {
+      stroke: "#334155"
+      stroke-dash: 5
+      font-color: "#334155"
+    }
+  }
+  optional: {
+    style: {
+      stroke: "#64748B"
+      font-color: "#64748B"
+    }
+  }
+}
+
+spa: "SPA dell'operatore\n[Angular 21, browser]" {class: internal}
+
+ingresso: "Ingresso" {
+  class: boundary
+
+  traefik: "Traefik\n[TLS :8443]" {
+    class: icon
+    icon: icons/devicon/traefikproxy.svg
+  }
+  edgecdn: "edge-cdn\n[Nginx, emula la CDN]" {class: internal}
+  s3spa: "Bucket della SPA\n[S3, LocalStack]" {
+    class: icon-leaf
+    icon: icons/aws/s3.svg
+  }
+  nginx: "Nginx applicativo" {class: internal}
+}
+
+api: "API\n[Laravel 12, PHP-FPM]" {class: internal}
+
+workflow: "Orchestrazione (LocalStack)" {
+  class: boundary
+
+  sfn: "Step Functions" {
+    class: icon
+    icon: icons/aws/step-functions.svg
+  }
+  sqs: "SQS: task e DLQ" {
+    class: icon
+    icon: icons/aws/sqs.svg
+  }
+}
+
+worker: "Worker (Laravel, mvp:workflow:consume)" {
+  class: boundary
+
+  documenti: "Worker documenti\n[queue]" {class: internal}
+  comunicazioni: "Worker comunicazioni\n[queue-communications]" {class: internal}
+}
+
+dati: "Dati" {
+  class: boundary
+
+  postgres: "PostgreSQL" {
+    class: icon
+    icon: icons/devicon/postgresql.svg
+  }
+  redis: "Redis: cache e sessioni" {
+    class: icon
+    icon: icons/devicon/redis.svg
+  }
+  s3docs: "S3 documenti, SSE-KMS" {
+    class: icon
+    icon: icons/aws/s3.svg
+  }
+}
+
+config: "Configurazione (LocalStack)" {
+  class: boundary
+
+  ssm: "Parametri\n[SSM Parameter Store]" {
+    class: icon-leaf
+    icon: icons/aws/systems-manager.svg
+  }
+  secrets: "Segreti\n[Secrets Manager]" {
+    class: icon-leaf
+    icon: icons/aws/secrets-manager.svg
+  }
+}
+
+aws: "AWS reale, profilo standard" {
+  class: optional-boundary
+
+  textract: "OCR\n[Textract, legge da S3 reale]" {
+    class: icon-leaf
+    icon: icons/aws/textract.svg
+  }
+  bedrock: "Modelli AI\n[Bedrock]" {
+    class: icon-leaf
+    icon: icons/aws/bedrock.svg
+  }
+}
+
+host: "Profilo local" {
+  class: optional-boundary
+
+  ocrlocale: "OCR locale\n[text layer, Tesseract nel worker]" {class: internal}
+  ollama: "Modello testuale\n[Ollama sull'host]" {class: internal}
+  comfyui: "Copertine\n[ComfyUI sull'host, opzionale]" {class: internal}
+}
+
+
+spa -> ingresso.traefik: "HTTPS" {class: sync}
+ingresso.traefik -> ingresso.edgecdn: "localhost" {class: sync}
+ingresso.edgecdn -> ingresso.s3spa: "asset" {class: sync}
+ingresso.edgecdn -> ingresso.nginx: "/api" {class: sync}
+ingresso.nginx -> api: "FastCGI" {class: sync}
+
+api -> dati.postgres {class: sync}
+api -> dati.redis {class: sync}
+api -> dati.s3docs {class: sync}
+api -> workflow.sfn: "StartExecution" {class: sync}
+api -> config {class: sync}
+
+workflow.sfn -> workflow.sqs: "task + token" {class: async}
+workflow.sqs -> worker: "task, una coda per pipeline" {class: async}
+# Callback dei worker (SendTaskSuccess, SendTaskFailure, SendTaskHeartbeat), spiegato nella caption:
+# qualunque posizione della label cade sul bordo del gruppo o su una linea.
+# Dichiarata al contrario perché ELK metta i worker dopo le code; la freccia punta a sfn.
+workflow.sfn <- worker {class: sync}
+
+# Dichiarati al contrario perché ELK metta dati e configurazione fra API e worker;
+# le frecce puntano comunque ai data store.
+dati.postgres <- worker {class: sync}
+dati.s3docs <- worker {class: sync}
+config <- worker {class: sync}
+
+worker.documenti -> aws.textract {class: optional}
+worker -> aws.bedrock {class: optional}
+worker.documenti -> host.ocrlocale {class: optional}
+worker -> host.ollama {class: optional}
+worker.comunicazioni -> host.comfyui {class: optional}

@@ -1,85 +1,79 @@
 # Runbook delle DLQ e del recupero
 
-## Come funziona
+Usa questo runbook quando scattano `DLQNotEmpty`, `CommunicationDLQNotEmpty` o `DlqProbeDown`, oppure
+quando la dashboard `Queues and DLQ` mostra messaggi in una DLQ.
 
-Step Functions pubblica i task con callback token su SQS. Ogni pipeline ha la propria coda, quindi
-un backlog in un dominio non rallenta l'altro. Entrambe le code hanno:
+## Cosa indica un messaggio in DLQ
 
-- `visibility_timeout_seconds = 900`
-- `message_retention_seconds = 345600` (4 giorni)
-- `maxReceiveCount = 3`: un messaggio ricevuto tre volte senza essere cancellato passa alla DLQ.
+![Stati di un messaggio di task in SQS: in coda, in elaborazione, cancellato, in DLQ](../architecture/diagrams/sqs-message-lifecycle.svg)
+
+*Stati di un messaggio di task in SQS. Tratteggio: passaggi gestiti da SQS e Step Functions.*
+
+Step Functions pubblica i task con callback token su SQS; ogni pipeline ha la propria coda e la
+propria DLQ:
 
 | Pipeline | Coda | DLQ | Ispezione |
 | --- | --- | --- | --- |
 | Documenti | `mvp-documents` | `mvp-documents-dlq` | `mvp:dlq:list --queue=documents` |
 | Comunicazioni | `mvp-communications` | `mvp-communications-dlq` | `mvp:dlq:list --queue=communications` |
 
-I worker registrano ogni task in `workflow_tasks` per `task_token_hash`, qualunque sia il dominio. I
-task riusciti o saltati sono idempotenti: se lo stesso token si ripresenta, non vengono rieseguiti.
+Entrambe le code hanno `visibility_timeout_seconds = 900`, `message_retention_seconds = 345600`
+(4 giorni) e `maxReceiveCount = 3`.
 
-`ConsumeWorkflowTasks::sendCallback()` classifica il rifiuto di un `SendTaskSuccess` o
-`SendTaskFailure` prima di decidere se cancellare il messaggio SQS:
+`ConsumeWorkflowTasks::sendCallback()` distingue due casi quando Step Functions rifiuta un callback:
 
-- su un errore AWS **transitorio** (throttling, servizio non disponibile, ...) il messaggio resta in
-  coda per una normale riconsegna;
-- su un errore **permanente** (`TaskTimedOut`, `TaskDoesNotExist`, `InvalidToken`), dove un nuovo
-  tentativo con lo stesso token non può riuscire, il messaggio viene cancellato subito. L'esito di
-  business è già registrato in `workflow_tasks` e sul record di dominio; lasciarlo in coda
-  produrrebbe solo `maxReceiveCount` tentativi e una DLQ piena di falsi fallimenti per lavoro già
-  concluso.
+- errore AWS transitorio (throttling, servizio non disponibile): il messaggio resta in coda e torna
+  visibile dopo 900 s;
+- errore permanente (`TaskTimedOut`, `TaskDoesNotExist`, `InvalidToken`): il messaggio viene
+  cancellato, perché un nuovo tentativo con lo stesso token non può riuscire.
 
-Un messaggio che arriva in DLQ è quindi un errore transitorio ripetuto tre volte, oppure un worker
-che si è fermato prima di cancellare il messaggio.
-
-```mermaid
-flowchart TD
-  task["Task SQS con callback token"]
-  worker["Worker Laravel"]
-  success["SendTaskSuccess"]
-  failure["SendTaskFailure"]
-  retry["Retry e Catch di Step Functions"]
-  dlq["DLQ dopo 3 ricezioni"]
-  metrics["Metriche Prometheus"]
-  alert["Alert in Alertmanager"]
-  operator["Runbook dell'operatore"]
-  replay["Redrive manuale dopo la correzione"]
-
-  task --> worker
-  worker --> success
-  worker --> failure
-  failure --> retry
-  task --> dlq
-  worker --> metrics
-  dlq --> metrics
-  metrics --> alert
-  alert --> operator
-  operator --> replay
-  replay --> task
-```
-
-## Ispezionare una DLQ
-
-```bash
-docker compose exec app php artisan mvp:dlq:list --queue=documents
-```
-
-Il comando legge fino a 10 messaggi dalla DLQ con `VisibilityTimeout=0` e ne stampa un'anteprima. È
-uno strumento diagnostico e non registra metriche: la profondità delle code la misura `DlqDepthProbe`,
-che legge `ApproximateNumberOfMessages` a ogni scrape.
+Un messaggio in DLQ è quindi un errore transitorio ripetuto tre volte, oppure un worker che si è
+fermato prima di cancellare il messaggio. Fra la prima ricezione e lo spostamento in DLQ passano
+almeno 1800 s, mentre il timeout più lungo di un task è 720 s: quando il messaggio arriva in DLQ,
+il task Step Functions è già scaduto e l'esecuzione ha ritentato con un nuovo token o è terminata
+in `Failed`. Riportare il messaggio in coda (redrive) non completa il lavoro: il callback
+fallirebbe con `TaskTimedOut` e il worker cancellerebbe il messaggio. Il recupero è il riavvio del
+flusso.
 
 ## Procedura di recupero
 
-1. Aprire in Grafana la dashboard `Queues and DLQ`.
-2. Eseguire `mvp:dlq:list --queue=<pipeline>` e annotare id e anteprima dei messaggi.
-3. Cercare in `workflow_tasks` stato ed errore del task (`subject_type` indica il dominio).
-4. Leggere `original_documents.workflow_failure_reason` o `communications.workflow_failure_reason`.
-5. Correggere la causa: permessi IAM, chiave S3 errata, accesso al modello, payload non valido.
-6. Riportare i messaggi dalla DLQ alla coda di origine con la console o la CLI dell'ambiente.
-7. Verificare l'idempotenza: i task già riusciti e duplicati devono risultare saltati.
+1. Elenca i messaggi della DLQ (fino a 10, con `VisibilityTimeout=0`) e annota id e anteprima:
 
-La MVP implementa l'ispezione diagnostica delle DLQ e i record idempotenti dei task. Il replay
-automatico non è implementato di proposito: il meccanismo definitivo dipende dai controlli operativi
-e dai confini IAM dell'ambiente di destinazione.
+   ```bash
+   docker compose exec app php artisan mvp:dlq:list --queue=documents
+   ```
+
+   Per le comunicazioni usa `--queue=communications`.
+
+2. Cerca il task e il suo errore in `workflow_tasks` (`subject_type` indica il dominio):
+
+   ```bash
+   docker compose exec -T postgres sh -lc 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "select id, subject_type, subject_id, task_type, status, error_message, failed_at from workflow_tasks where completed_at is null order by updated_at desc limit 20;"'
+   ```
+
+3. Leggi il motivo del fallimento sul record di dominio: `original_documents.workflow_failure_reason`
+   oppure `communications.workflow_failure_reason`.
+
+4. Correggi la causa: permessi IAM, chiave S3 errata, accesso al modello, payload non valido.
+
+5. Riavvia il flusso:
+   - comunicazioni: `POST /api/v1/communications/{id}/regenerate`;
+   - documenti: nuovo upload del PDF, perché non esiste una route di riavvio.
+
+6. Svuota la DLQ dopo l'analisi, altrimenti l'alert resta attivo fino alla scadenza dei messaggi
+   (4 giorni):
+
+   ```bash
+   docker compose --profile tools run --rm aws-cli -c 'aws sqs purge-queue --queue-url <url-della-dlq>'
+   ```
+
+   Gli URL sono in `SQS_DLQ_URL` (documenti) e `COMMUNICATION_PIPELINE_DLQ_URL` (comunicazioni).
+
+Verifica: `mvp_dlq_messages{queue}` torna a 0 nella dashboard `Queues and DLQ` e il flusso riavviato
+arriva a `Completed`.
+
+Se `DlqProbeDown` è attivo, la profondità delle DLQ non è leggibile e `DLQNotEmpty` non è affidabile:
+controlla prima che LocalStack sia raggiungibile dal container `app`.
 
 ## Metriche utili
 
