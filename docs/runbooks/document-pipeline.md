@@ -117,8 +117,9 @@ messaggio in lavorazione non torna visibile a un secondo worker. I worker invian
 ## Timeout dello stream SSE e pool PHP-FPM
 
 `DocumentController::stream()` invia l'avanzamento via SSE per al massimo
-`mvp.documents.stream_timeout_seconds` (default 1800 s, sopra il caso peggiore di circa 1140 s:
-Textract 420 s più Bedrock 720 s più persistenza e dispatch). Allo scadere invia `still_running`,
+`mvp.documents.stream_timeout_seconds` (default 1800 s). Il caso peggiore senza retry è 1380 s, la
+somma dei timeout dei task nell'ASL: Textract 420 s, Bedrock 720 s, persistenza 120 s, dispatch
+120 s. Con i retry può superare lo stream. Allo scadere invia `still_running`,
 non `error`: la SPA lascia attivo l'avanzamento e non lo tratta come fallimento. Il worker sta ancora
 lavorando; è solo la vista in tempo reale ad aver smesso di seguirlo, e il successivo
 `GET /api/v1/state` riporta l'esito.
@@ -134,9 +135,10 @@ timeout dello stream.
 
 | Fallimento | Segnale osservabile | Azione |
 | --- | --- | --- |
-| Avvio del workflow fallito | `workflow_failed_at`, evento di audit, `mvp_stepfunctions_executions_failed_total` | Controllare l'ARN della state machine e l'URL della coda. |
+| Avvio del workflow fallito | `workflow_failed_at`, evento di audit, `mvp_stepfunctions_executions_failed_total`, alert `StepFunctionExecutionFailed` | Controllare `DOCUMENT_PIPELINE_STATE_MACHINE_ARN` e `DOCUMENT_PIPELINE_TASK_QUEUE_URL`. |
 | Task SQS fallito | `workflow_tasks.status=failed`, log del worker | Ispezionare la DLQ e l'errore del task ([`dlq-recovery.md`](dlq-recovery.md)). |
-| Textract fallito | `mvp_textract_jobs_failed_total` | Controllare la chiave dell'oggetto S3, i permessi IAM e i limiti di Textract. |
-| Bedrock fallito | Messaggio di errore sul documento o sul sotto-documento | Controllare accesso al modello, ID del modello e credenziali. |
+| Textract fallito | `mvp_textract_jobs_failed_total`, alert `TextractFailureRateHigh` | Controllare la chiave dell'oggetto S3, i permessi IAM e i limiti di Textract. |
+| Bedrock fallito | Messaggio di errore sul documento o sul sotto-documento, `mvp_sqs_messages_failed_total{task_type="bedrock.extract"}`, alert `BedrockFailureRateHigh` | Controllare accesso al modello, ID del modello e credenziali. |
 | Documento bloccato | `mvp_documents_stuck_processing`, alert `DocumentStuckInProcessing` | Controllare worker, coda SQS ed esecuzione Step Functions. |
+| Coda ferma | alert `QueueBacklogHigh`: documenti in elaborazione ma nessun messaggio consumato negli ultimi 30 minuti | Verificare che il worker sia attivo (`docker compose ps queue`) e leggerne i log; riavviarlo con `docker compose restart queue`. |
 | Stream SSE scaduto (`still_running`) | La SPA continua a leggere lo stato, nessun errore mostrato | Non è un fallimento: controllare `mvp_documents_stuck_processing` prima di supporlo. |

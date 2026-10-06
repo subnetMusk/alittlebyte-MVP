@@ -12,7 +12,7 @@ umana. Fino a questa decisione il punteggio era:
 confidence_score = round(confidenzaOcrMediaDellePagine × completezzaDeiCampiChiave)
 ```
 
-dove la completezza è la frazione dei quattro campi chiave — nome, cognome, azienda, data —
+dove la completezza è la frazione dei quattro campi chiave (nome, cognome, azienda, data)
 effettivamente restituiti dal modello, al netto di quelli dichiarati a mano in fase di caricamento.
 
 La formula è documentata in `docs/mvp-scope.md` ed è una scelta consapevole su un punto
@@ -52,8 +52,8 @@ Su un documento di prova a tre destinatari passato per la pipeline reale (Textra
 | stessa pagina, scansione degradata | 94,59 | validato in automatico |
 | stessa pagina, scansione molto degradata | 52,20 | in revisione, punteggi 41 / 49 / 40 |
 
-Nel terzo caso gli errori di lettura sono arrivati fino ai nomi — «Bertolini» per Bertolino,
-«Massuleni» per Mazzoleni — e il documento è stato correttamente instradato alla revisione. Ma vi
+Nel terzo caso gli errori di lettura sono arrivati fino ai nomi («Bertolini» per Bertolino,
+«Massuleni» per Mazzoleni) e il documento è stato correttamente instradato alla revisione. Ma vi
 è arrivato solo perché era degradata *tutta* la pagina: un degrado locale sul solo nome, che è il
 caso reale di un timbro o di una piega, avrebbe lasciato la media alta.
 
@@ -74,8 +74,8 @@ l'implementazione precedente appiattiva: il committente **guarda al codice fisca
 dal resto**, perché è il dato che identifica la persona.
 
 Attenzione a non leggerlo per più di quel che dice: «mapping CF ≥ 99%» è un obiettivo di
-**accuratezza misurato sulla popolazione** — il 99% dei codici fiscali dev'essere mappato
-correttamente — non una soglia di confidenza OCR da applicare a ogni singolo documento. Le due
+**accuratezza misurato sulla popolazione** (il 99% dei codici fiscali dev'essere mappato
+correttamente), non una soglia di confidenza OCR da applicare a ogni singolo documento. Le due
 cose si somigliano e non lo sono: la prima si verifica contando gli errori su un campione, la
 seconda instrada un documento alla revisione. Confonderle porta a una soglia che nessun documento
 può superare (si veda la nota sulla taratura, più avanti).
@@ -102,8 +102,8 @@ In concreto:
 
 2. **Ogni campo trascritto viene ricondotto alla sua riga.** `FieldConfidence` (dominio, logica
    pura) cerca il valore restituito dal modello fra le righe OCR dell'intervallo di pagine del
-   sotto-documento, confrontando le due forme normalizzate — maiuscole, accenti sciolti,
-   punteggiatura rimossa. Se il valore compare per intero in una riga, quella riga ne porta la
+   sotto-documento, confrontando le due forme normalizzate (maiuscole, accenti sciolti,
+   punteggiatura rimossa). Se il valore compare per intero in una riga, quella riga ne porta la
    confidenza; se è spezzato su più righe, il campo prende la **più debole** delle sue parti.
 
 3. **La data si cerca nelle rese in cui il foglio la scrive.** Il modello normalizza sempre a
@@ -147,7 +147,7 @@ cercarli fra le righe non direbbe nulla sulla loro affidabilità.
 
 **Negative, o comunque da tenere presenti.**
 
-- **Più documenti finiranno in revisione.** È l'effetto voluto — prima ne passavano di sbagliati —
+- **Più documenti finiranno in revisione.** È l'effetto voluto (prima ne passavano di sbagliati),
   ma è un cambio di comportamento visibile sulle metriche, e va comunicato prima di leggerlo come
   un peggioramento.
 - **La soglia dedicata al codice fiscale è stata tarata sui documenti, non sulla carta.** La prima
@@ -172,7 +172,7 @@ cercarli fra le righe non direbbe nulla sulla loro affidabilità.
 ## Alternatives considered
 
 - **Lasciare la media e progettare intorno al difetto.** Scartata: la formula era documentata e i
-  requisiti formalmente soddisfatti, ma il difetto è di sostanza — un documento può essere
+  requisiti formalmente soddisfatti, ma il difetto è di sostanza: un documento può essere
   consegnato alla persona sbagliata senza che nulla lo segnali.
 - **Sostituire la media con un percentile basso delle righe** (per esempio il decimo). Molto meno
   invasiva, una riga di aggregazione, e avrebbe risolto il caso del campo illeggibile in una pagina
@@ -188,39 +188,41 @@ cercarli fra le righe non direbbe nulla sulla loro affidabilità.
 
 ## Implementation evidence
 
-- `app/Mvp/Documents/Domain/Support/FieldConfidence.php` — attribuzione del valore alla riga,
+- `app/Mvp/Documents/Domain/Support/FieldConfidence.php`: attribuzione del valore alla riga,
   normalizzazione, varianti di data.
-- `app/Mvp/Documents/Adapters/Outbound/Ocr/TextractOcrAdapter.php` — `blocks` per pagina.
-- `app/Mvp/Documents/Application/UseCases/ExtractSubDocumentFieldsService.php` —
+- `app/Mvp/Documents/Adapters/Outbound/Ocr/TextractOcrAdapter.php`: `blocks` per pagina.
+- `app/Mvp/Documents/Application/UseCases/ExtractSubDocumentFieldsService.php`:
   `fieldConfidences()`, `computeConfidenceScore()` (minimo sui campi chiave),
   `reviewStatusForConfidence()` (soglia dedicata al codice fiscale), `ocrBlocksForRange()`.
-- `app/Mvp/Documents/Domain/ValueObjects/ExtractedDataChanges.php` — `withFieldConfidences()`.
+- `app/Mvp/Documents/Domain/ValueObjects/ExtractedDataChanges.php`: `withFieldConfidences()`.
 - `database/migrations/2026_08_20_000000_add_field_confidences_to_extracted_data.php`.
-- `config/services.php` — `mvp_fiscal_code_confidence_threshold`.
-- `tests/DomainUnit/Documents/FieldConfidenceTest.php` — logica pura.
-- `tests/Feature/DocumentExtractionTest.php` — campo illeggibile in pagina pulita, minimo sui campi
+- `config/services.php`: `mvp_fiscal_code_confidence_threshold`.
+- `tests/DomainUnit/Documents/FieldConfidenceTest.php`: logica pura.
+- `tests/Feature/DocumentExtractionTest.php`: campo illeggibile in pagina pulita, minimo sui campi
   chiave, dettaglio persistito, soglia del codice fiscale.
-- `app/Mvp/Support/MvpStateService.php` — `lowConfidenceFields()` nel contratto del documento e
+- `app/Mvp/Support/MvpStateService.php`: `lowConfidenceFields()` nel contratto del documento e
   `fieldConfidenceMetric()`, la ripartizione dei campi estratti fra buona confidenza e da
   revisionare. Sostituisce «campi compilati dall'AI», che contava le caselle piene senza guardare
   quanto fossero leggibili.
-- `apps/frontend/src/app/features/copilot/components/field-origin/field-origin.ts` —
+- `apps/frontend/src/app/features/copilot/components/field-origin/field-origin.ts`:
   `originForField()`: il glifo del singolo campo, con ricaduta sullo stato del documento per quelli
   elaborati prima di questa decisione.
 
 ## Related documents
 
-- [ADR 0010](0010-hexagonal-architecture-documents-communications.md) — colloca `FieldConfidence`
+- [ADR 0010](0010-hexagonal-architecture-documents-communications.md): colloca `FieldConfidence`
   nel dominio come logica pura, e `Observability` fuori dal perimetro ports & adapters.
-- [ADR 0005](0005-no-automatic-fallbacks.md) — nessun fallback silenzioso: il ripiego sulla media di
-  pagina è dichiarato e circoscritto ai campi non rintracciabili, non un fallback di servizio.
-- `docs/archive/capitolato-traceability.md` §12 e §13 (archiviato) — soglia di confidenza e
-  human-in-the-loop; da aggiornare con la soglia dedicata al codice fiscale.
-- `docs/mvp-scope.md` — la descrizione della confidenza va aggiornata: non è più «leggibilità OCR
-  ponderata sulla completezza», ma «confidenza del campo chiave più debole».
-- `docs/runbooks/document-pipeline.md` punto 8 — stessa correzione.
-- Specifica Tecnica §5.1 (repo `Documentazione`, branch `specifica_tecnica`) — da aggiornare a
+- [ADR 0005](0005-no-automatic-fallbacks.md): il ripiego sulla media di pagina è dichiarato e
+  circoscritto ai campi non rintracciabili, quindi non è un fallback silenzioso di servizio.
+- [`../mvp-scope.md`](../mvp-scope.md), [`../runbooks/document-pipeline.md`](../runbooks/document-pipeline.md)
+  e [`../archive/capitolato-traceability.md`](../archive/capitolato-traceability.md) §12: descrivono
+  la confidenza per campo e la soglia dedicata al codice fiscale.
+- Specifica Tecnica §5.1 (repo `Documentazione`, branch `specifica_tecnica`): da aggiornare a
   partire da questo ADR. Nella stessa sede va corretta la descrizione dell'entità `SubDocument`, che
-  dichiara la quarantena come esito di «confidenza troppo bassa» mentre nel codice — e nella
-  descrizione del caso d'uso poche righe più avanti — la quarantena è l'esito di un output AI non
+  dichiara la quarantena come esito di «confidenza troppo bassa», mentre nel codice (e nella
+  descrizione del caso d'uso poche righe più avanti) la quarantena è l'esito di un output AI non
   conforme allo schema.
+
+Nota (2026-10-06): gli aggiornamenti di `mvp-scope.md`, del runbook della pipeline documentale e
+della tracciabilità del Capitolato, elencati qui come da fare, sono stati eseguiti; resta la
+Specifica Tecnica.

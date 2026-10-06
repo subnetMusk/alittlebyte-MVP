@@ -9,7 +9,7 @@ La generazione di una comunicazione HR richiede due chiamate AI: il testo (pochi
 l'immagine di copertina (10-15 secondi, con picchi superiori). Sono latenze incompatibili con il
 ciclo HTTP: `php-fpm` interrompe l'esecuzione dopo 30 secondi e la risposta resterebbe appesa per
 tutta la durata. Le due chiamate hanno inoltre criticità diverse: senza testo non esiste una
-comunicazione, senza copertina esiste eccome: e vanno trattate di conseguenza.
+comunicazione, senza copertina esiste eccome, e vanno trattate di conseguenza.
 
 La copertina è un binario di qualche centinaio di kilobyte: va su storage a oggetti, non nel record
 applicativo, che viene serializzato nello stato restituito da nove endpoint. È però un asset generato

@@ -14,7 +14,10 @@ Per un certificato riconosciuto dal browser, con `mkcert` installato sull'host:
 
 ```bash
 make trusted-local-tls
+docker compose restart traefik
 ```
 
 Il target usa la CA locale di mkcert e scrive gli stessi file `mvp-local.test.crt` e
-`mvp-local.test.key` letti da Traefik.
+`mvp-local.test.key` letti da Traefik. Il riavvio serve perché Traefik osserva solo la cartella della
+configurazione dinamica, non i file del certificato. La procedura completa è in
+[Sviluppo locale](../../../docs/runbooks/local-development.md).

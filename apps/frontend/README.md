@@ -16,6 +16,8 @@ make frontend-build
 make frontend-s3-local-deploy
 ```
 
+`make verify-frontend` esegue in sequenza generazione del client, lint, typecheck, test e build.
+
 Il package radice usa i workspace npm. I comandi girano nel container Compose `node`
 (`node:22-bookworm-slim`), non con il Node dell'host.
 

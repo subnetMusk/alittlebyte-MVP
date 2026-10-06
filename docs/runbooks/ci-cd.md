@@ -18,7 +18,7 @@ flowchart LR
   frontend --> diff
 ```
 
-Sei job; tutti tranne `secrets` e `docs` passano da Docker Compose.
+Sei job; `backend`, `frontend` e `stack` passano da Docker Compose, `secrets`, `docs` e `coverage-diff` girano direttamente sul runner.
 
 - **backend**: costruisce l'immagine dell'app ed esegue `composer validate`, Pint, Larastan, la
   verifica della Dependency Rule, Pest con copertura di righe e branch (Xdebug), le soglie globali e,

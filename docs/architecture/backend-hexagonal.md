@@ -56,9 +56,8 @@ app/Mvp/Workflow/          infrastruttura condivisa dalle due pipeline
 └── Support/               StateMachineName, WorkflowContext
 ```
 
-`WorkflowEnginePort` è l'unica porta condivisa fra i due domini. Prima del refactor due classi
-avvolgevano `SfnClient` nello stesso modo; ora c'è un solo adapter, coerente con `Workflow` come
-infrastruttura comune alle pipeline.
+`WorkflowEnginePort` è l'unica porta condivisa fra i due domini, con un solo adapter
+(`SfnWorkflowEngineAdapter`): `Workflow` è infrastruttura comune alle pipeline.
 
 `Ai`, `Audit`, `Identity`, `Observability` e `Support` restano servizi di infrastruttura, fuori dal
 perimetro esagonale. `MvpStateService` è un read model: le letture che compongono la UI interrogano
@@ -68,17 +67,38 @@ Le entità (`OriginalDocument`, `SubDocument`, `Communication`) governano le pro
 ogni metodo verifica la sua guardia e accumula il delta in un oggetto `*Changes` che l'adapter di
 persistenza legge. Per esempio `Communication::applyGeneratedCover()` lancia
 `CoverPrecedesTextException` se il testo non è ancora stato generato: l'invariante "prima il testo,
-poi la copertina" sta nell'entità, non nei servizi. In una prima versione la teneva un
-`CommunicationDraftBuilder`, poi assorbito dall'entità.
+poi la copertina" sta nell'entità, non nei servizi.
 
 Terminologia usata nel codice e nei documenti: dominio, applicazione, adapter primario, adapter
 secondario, porta primaria, porta secondaria.
 
+## Porte secondarie e sistemi esterni
+
+Le dipendenze vanno sempre verso l'interno: adapter primari → porte primarie → casi d'uso ed entità
+→ porte secondarie, implementate dagli adapter in `Adapters/Outbound/`. Nel profilo standard:
+
+| Dominio | Porta secondaria | Adapter | Sistema esterno |
+| --- | --- | --- | --- |
+| Documents | `DocumentRepository` | `EloquentDocumentRepository` | PostgreSQL |
+| Documents | `OcrGatewayPort` | `TextractOcrAdapter` | Textract |
+| Documents | `DocumentAiGatewayPort` | `BedrockDocumentAiAdapter` | Bedrock |
+| Documents | `DocumentStoragePort` | `FlysystemDocumentStorageAdapter` | S3 |
+| Documents | `SendMessageRendererPort` | `DompdfSendMessageRenderer` | Nessuno, PDF generato nel processo |
+| Documents | `DocumentEventDispatcherPort` | `LaravelDocumentEventDispatcher` | Nessuno, listener Laravel |
+| Communications | `CommunicationRepository` | `EloquentCommunicationRepository` | PostgreSQL |
+| Communications | `PromptConfigurationRepository` | `EloquentPromptConfigurationRepository` | PostgreSQL |
+| Communications | `CommunicationAiGatewayPort` | `BedrockCommunicationAiAdapter` | Bedrock |
+| Communications | `CommunicationCoverStoragePort` | `FlysystemCommunicationCoverAdapter` | S3 |
+| Communications | `CommunicationPdfRendererPort` | `DompdfCommunicationPdfRenderer` | Nessuno, PDF generato nel processo |
+| Communications | `CommunicationEventDispatcherPort` | `LaravelCommunicationEventDispatcher` | Nessuno, listener Laravel |
+| Workflow, condivisa | `WorkflowEnginePort` | `SfnWorkflowEngineAdapter` | Step Functions |
+
+I callback `SendTask*` non passano da una porta: li invia `ConsumeWorkflowTasks` con `SfnClient`.
+
 ## Profilo di esecuzione
 
-Il fork aggiunge un profilo di esecuzione locale ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)),
-che dimostra cosa permette il confine delle porte: cambiano i provider esterni, non una riga di
-dominio o di applicazione.
+Il fork aggiunge un profilo di esecuzione locale ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)):
+cambiano i provider esterni, mentre dominio e applicazione restano invariati.
 
 | Porta | `MVP_EXECUTION_PROFILE=standard` (default) | `MVP_EXECUTION_PROFILE=local` |
 | --- | --- | --- |
@@ -118,9 +138,9 @@ Solo pattern con un collaboratore reale dietro.
 | **Adapter** | `EloquentDocumentRepository`, `BedrockDocumentAiAdapter`, `TextractOcrAdapter`, `SfnWorkflowEngineAdapter` e gli equivalenti di Communications | Il caso d'uso parla con `DocumentRepository`, non con `SubDocument::query()`: il dominio non conosce Eloquent né l'SDK AWS. | Il dominio dipende da Eloquent e AWS, e i test di dominio richiedono Laravel e LocalStack. |
 | **Strategy** | `WorkflowTaskHandler`, scelto da `WorkflowTaskRegistry::for($taskType)`; `CoverImageGenerator` nel profilo locale | `WorkflowTaskRunner` resta uguale per tutti i domini (dedup, claim, audit, metriche); cambia solo il passo di business. L'adapter locale delle comunicazioni non sa quale generatore di copertina usa. | Il runner avrebbe un `match` sul dominio e conoscerebbe Documents e Communications. |
 | **Factory Method** | `WorkflowTaskRegistry::for()` | La selezione dell'handler a runtime sta in un punto solo. | Ogni punto di invocazione sceglierebbe l'handler da sé. |
-| **Facade** | I servizi applicativi (`UploadDocumentService`, `GenerateCommunicationService`, ...) | L'adapter primario chiama un metodo e non sa quanti collaboratori servono (repository, gateway AI, storage, regole). | Il controller orchestrerebbe 4-5 servizi, com'era prima del refactor. |
-| **Observer** | Eventi di dominio, 14 in Documents e 21 in Communications, pubblicati tramite le porte `*EventDispatcherPort`, ognuno con il proprio listener | Audit e metriche reagiscono agli eventi invece di essere chiamati da ogni caso d'uso. La coppia audit+metrica della copertina degradata, prima duplicata in due punti, ora sta in un listener. | Ogni nuova reazione richiede di toccare tutti i casi d'uso che generano l'evento. |
-| **Command** | Un servizio applicativo per porta primaria | Una responsabilità per classe, testabile con fake delle porte secondarie. | Servizi "fat" con più responsabilità, com'erano `DocumentProcessingService` e `CommunicationWorkflowService`. |
+| **Facade** | I servizi applicativi (`UploadDocumentService`, `GenerateCommunicationService`, ...) | L'adapter primario chiama un metodo e non sa quanti collaboratori servono (repository, gateway AI, storage, regole). | Il controller orchestrerebbe 4-5 servizi. |
+| **Observer** | Eventi di dominio, 14 in Documents e 21 in Communications, pubblicati tramite le porte `*EventDispatcherPort`, ognuno con il proprio listener | Audit e metriche reagiscono agli eventi invece di essere chiamati da ogni caso d'uso. Audit e metrica della copertina degradata stanno in un solo listener. | Ogni nuova reazione richiede di toccare tutti i casi d'uso che generano l'evento. |
+| **Command** | Un servizio applicativo per porta primaria | Una responsabilità per classe, testabile con fake delle porte secondarie. | Servizi con più responsabilità, difficili da testare in isolamento. |
 | **Singleton** | Binding porta → adapter in `AppServiceProvider` | I client AWS restano condivisi; il binding è il punto in cui si sceglie l'adapter. | Cambiare adapter richiederebbe toccare ogni type-hint concreto. |
 
 Limiti dichiarati:
@@ -131,13 +151,15 @@ Limiti dichiarati:
 - **Casi d'uso pass-through.** `ListDocumentsService` e `ListCommunicationsService` delegano al
   repository in una riga. Esistono per uniformità del confine: nessun controller chiama un
   repository direttamente.
-- **Sostituibilità non provata con un secondo provider.** Ogni porta secondaria ha un solo adapter
-  di produzione. L'argomento dimostrato è la testabilità: ogni porta ha un secondo implementatore
-  reale, il fake dei test di dominio (`InMemoryDocumentRepository`, `FakeWorkflowEngine`, ...).
+- **Sostituibilità provata su tre porte.** `DocumentAiGatewayPort`, `CommunicationAiGatewayPort` e
+  `OcrGatewayPort` hanno un secondo adapter, quello del profilo locale; le altre porte secondarie
+  hanno un solo adapter di produzione. Per tutte le porte il secondo implementatore è il fake dei
+  test di dominio (`InMemoryDocumentRepository`, `FakeWorkflowEngine`, ...).
 
 Pattern valutati e scartati:
 
 - **Proxy** davanti ai gateway AI (cache, circuit breaker): contraddirebbe l'[ADR 0005](../architecture-decisions/0005-no-automatic-fallbacks.md),
   che vieta di mascherare un fallimento dei servizi AI.
-- **Abstract Factory**: non esistono famiglie di adapter da creare insieme. LocalStack e AWS reale
-  usano le stesse classi con endpoint e credenziali diversi ([ADR 0004](../architecture-decisions/0004-localstack-terraform.md)).
+- **Abstract Factory**: i tre adapter del profilo locale formano una famiglia, ma con tre porte basta
+  il `match` per porta in `AppServiceProvider`. LocalStack e AWS reale usano le stesse classi con
+  endpoint e credenziali diversi ([ADR 0004](../architecture-decisions/0004-localstack-terraform.md)).

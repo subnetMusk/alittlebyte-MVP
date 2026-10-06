@@ -1,6 +1,6 @@
 # ADR 0004: Emulazione AWS locale con LocalStack e Terraform
 
-Status: Accepted, implemented
+Status: Accepted, implemented for LocalStack; `infra/modules` and `infra/aws` were never implemented (see "Aggiornamento")
 Date: 2026-06-08
 
 ## Context

@@ -23,12 +23,13 @@ Nessuna credenziale AWS statica resta nei workflow.
 | Componente | Azione IAM | Risorsa | Motivo | Ambiente | Note |
 | --- | --- | --- | --- | --- | --- |
 | API Laravel | `s3:PutObject` | Bucket o prefisso dei documenti | Salvare il documento caricato per OCR e AI | AWS reale (smoke, futura produzione) | Meglio un prefisso per tenant o ambiente. |
-| API Laravel | `s3:GetObject` | Bucket o prefisso dei documenti | Leggere l'originale come input di Bedrock e per l'anteprima | AWS reale | Necessario quando l'elaborazione legge da S3. |
+| API Laravel | `s3:GetObject`, `s3:DeleteObject` | Bucket o prefisso dei documenti | Anteprima e messaggio di invio dei sotto-documenti; eliminazione dei documenti | AWS reale | Bedrock non legge da S3: riceve solo il testo OCR. |
+| Worker documenti | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` | Bucket o prefisso dei documenti | Leggere l'originale, salvare i sotto-documenti, rimuovere i file parziali dopo un errore | AWS reale | |
 | API Laravel | `s3:GetObject` | Prefisso copertine (`communications/covers/`) | Servire la copertina in streaming | LocalStack, futura produzione | Nessun URL presigned: il controllo di tenant resta applicativo. |
 | API Laravel | `s3:PutObject`, `s3:DeleteObject` | Prefisso copertine | Sostituire o rimuovere la copertina a mano | LocalStack, futura produzione | La sostituzione scrive una chiave nuova e cancella la precedente. |
 | API Laravel | `states:StartExecution` | State machine documentale e state machine delle comunicazioni | Avviare i workflow | LocalStack, futura produzione | Due state machine distinte. |
 | Deploy della SPA | `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` | Bucket statico della SPA (`FRONTEND_STATIC_BUCKET`) | Sincronizzare `apps/frontend/dist` | LocalStack, futura produzione | Bucket separato dai documenti. In produzione anche `cloudfront:CreateInvalidation` per `index.html`. |
-| Serving della SPA | `s3:GetObject` | Oggetti del bucket statico | Servire gli asset | LocalStack, futura produzione | In LocalStack il bucket è public-read solo per `edge-cdn`. In produzione bucket **privato** dietro CloudFront con OAC (principal `cloudfront.amazonaws.com`, condizione `AWS:SourceArn`), mai `Principal: "*"`. |
+| Serving della SPA | `s3:GetObject` | Oggetti del bucket statico | Servire gli asset | LocalStack, futura produzione | In LocalStack il bucket è public-read solo per `edge-cdn`. In produzione bucket privato dietro CloudFront con OAC (principal `cloudfront.amazonaws.com`, condizione `AWS:SourceArn`), mai `Principal: "*"`. |
 | Worker | `sqs:ReceiveMessage`, `sqs:DeleteMessage` | Coda dei task della propria pipeline | Consumare i task e confermarli dopo il callback | LocalStack, futura produzione | Ogni worker legge solo la propria coda. |
 | Worker | `sqs:GetQueueAttributes` | Code e DLQ delle due pipeline | Readiness, probe delle DLQ, `mvp:dlq:list` | LocalStack, futura produzione | |
 | Worker | `states:SendTaskSuccess`, `states:SendTaskFailure`, `states:SendTaskHeartbeat` | Callback token delle esecuzioni | Riprendere il workflow ed evitare il timeout dei task lunghi | LocalStack, futura produzione | Limitati alla state machine dove l'API lo consente. |
@@ -43,7 +44,7 @@ Nessuna credenziale AWS statica resta nei workflow.
 | Smoke AWS | `textract:DetectDocumentText` | `*` | OCR sincrono sull'immagine di prova | GitHub Actions, manuale | Lo smoke usa l'API sincrona, l'applicazione quella asincrona. |
 | Smoke AWS | `bedrock:Converse` | Modello testo | Una risposta di prova | GitHub Actions, manuale | |
 
-Servirebbero solo con un deploy reale, oggi non definito: `cloudfront:CreateInvalidation`, CloudWatch
+Servirebbero solo con un deploy reale, non ancora definito: `cloudfront:CreateInvalidation`, CloudWatch
 Logs e metriche, permessi sul registry delle immagini. EventBridge e SES esistono in Terraform ma il
 codice non li usa: non richiedono permessi applicativi.
 

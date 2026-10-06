@@ -1,4 +1,4 @@
-# Runbook dello sviluppo locale
+# Sviluppo locale
 
 Lo stack completo gira in Docker Compose, con LocalStack al posto di AWS. Tutti i comandi passano dal
 `Makefile`; sull'host servono solo Docker e `make`.
