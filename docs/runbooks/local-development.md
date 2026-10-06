@@ -241,12 +241,15 @@ un'immagine in tempo, la copertina risulta degradata con il motivo, come avviene
 prompt scaduto viene tolto dalla coda di ComfyUI o interrotto, così non continua a occupare GPU e
 memoria.
 
-Ollama, ComfyUI e lo stack si contendono memoria e GPU. Su una macchina da 16 GB con lo stack completo
-avviato, Z-Image-Turbo ha superato il limite e la copertina è risultata degradata: per l'uso normale
-resta consigliato `mock`. Con SDXL Lightning e `LOCAL_LLM_KEEP_ALIVE=0`, sulla stessa macchina con app,
-worker e servizi AWS emulati ma senza lo stack di osservabilità, una comunicazione completa ha
-richiesto 106 secondi, di cui 14 per la copertina. Il campionamento in sé è breve; il tempo va nel caricamento dei modelli
-quando la RAM è esaurita. Tre regolazioni riducono la contesa:
+Ollama, ComfyUI e lo stack si contendono memoria e GPU. Il campionamento in sé è breve: il tempo va
+nel caricamento dei modelli, che diventa lentissimo quando la RAM è esaurita. Su una macchina da 16 GB
+con lo stack completo avviato, Z-Image-Turbo ha superato il limite e la copertina è risultata
+degradata. Con SDXL Lightning e le regolazioni qui sotto, sulla stessa macchina con app, worker e
+servizi AWS emulati ma senza lo stack di osservabilità, un cedolino con tre destinatari ha richiesto
+48 secondi e una comunicazione completa 25, di cui 13 per la copertina; ogni chiamata al modello
+testuale lo ricarica in circa 9 secondi. Per l'uso normale resta consigliato `mock`.
+
+Tre regolazioni riducono la contesa:
 
 - `LOCAL_LLM_KEEP_ALIVE=0` fa scaricare a Ollama il modello testuale subito dopo ogni risposta, e
   lascia la VRAM alla copertina. Il prezzo è ricaricarlo a ogni chiamata, anche durante l'analisi dei

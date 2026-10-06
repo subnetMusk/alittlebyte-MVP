@@ -66,6 +66,10 @@ Introdurre un profilo di esecuzione, `MVP_EXECUTION_PROFILE`, con due valori:
 - Il provider ComfyUI ha un tempo massimo di 270 secondi, sotto il timeout del task `GenerateCover`
   (300 secondi, con un retry su timeout): una generazione più lunga degrada la copertina invece di
   farne partire una seconda.
+- Su una macchina con una GPU da 8 GB e 16 GB di RAM il modello testuale e quello delle immagini non
+  stanno in memoria insieme: si alternano, con `LOCAL_LLM_KEEP_ALIVE=0` per Ollama e il rilascio dei
+  modelli di ComfyUI dopo ogni copertina. È configurazione degli adapter, non coordinamento fra i
+  passi del workflow.
 - Limiti noti: il messaggio di fallimento dell'OCR scritto dal caso d'uso cita ancora Textract; una
   copertina mock è etichettata "Generata dall'AI", perché il dominio distingue solo copertine
   generate e caricate a mano; la qualità dell'estrazione dipende dal modello locale scelto.

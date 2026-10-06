@@ -1,6 +1,24 @@
 # aLittleByte MVP: AI Assistant e Co-Pilot CdL
 
-<p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white" alt="Laravel 12">
+  <img src="https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white" alt="PHP 8.4">
+  <img src="https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white" alt="Angular 21">
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 16">
+  <img src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white" alt="Redis 7">
+  <img src="https://img.shields.io/badge/LocalStack-AWS%20emulato-1D2D44" alt="LocalStack">
+  <img src="https://img.shields.io/badge/Terraform-infrastruttura-844FBA?logo=terraform&logoColor=white" alt="Terraform">
+  <img src="https://img.shields.io/badge/Amazon%20Bedrock-AI-FF9900" alt="Amazon Bedrock">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Prometheus-metriche-E6522C?logo=prometheus&logoColor=white" alt="Prometheus">
+  <img src="https://img.shields.io/badge/Grafana-dashboard%20e%20log-F46800?logo=grafana&logoColor=white" alt="Grafana">
+  <img src="https://img.shields.io/badge/Ollama-profilo%20locale-000000?logo=ollama&logoColor=white" alt="Ollama">
+  <img src="https://img.shields.io/badge/ComfyUI-copertine%20locali-4B5563" alt="ComfyUI">
+</p>
+
+<p align="center">
   <a href="https://github.com/subnetMusk/alittlebyte-MVP/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/subnetMusk/alittlebyte-MVP/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI (main)"></a>
 </p>
 
