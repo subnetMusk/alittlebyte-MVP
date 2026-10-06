@@ -246,11 +246,15 @@ avviato, Z-Image-Turbo ha superato il limite e la copertina è risultata degrada
 resta consigliato `mock`. Con SDXL Lightning e `LOCAL_LLM_KEEP_ALIVE=0`, sulla stessa macchina con app,
 worker e servizi AWS emulati ma senza lo stack di osservabilità, una comunicazione completa ha
 richiesto 106 secondi, di cui 14 per la copertina. Il campionamento in sé è breve; il tempo va nel caricamento dei modelli
-quando la RAM è esaurita. Due regolazioni riducono la contesa:
+quando la RAM è esaurita. Tre regolazioni riducono la contesa:
 
 - `LOCAL_LLM_KEEP_ALIVE=0` fa scaricare a Ollama il modello testuale subito dopo ogni risposta, e
   lascia la VRAM alla copertina. Il prezzo è ricaricarlo a ogni chiamata, anche durante l'analisi dei
   documenti.
+- Dopo ogni copertina il backend chiede a ComfyUI di scaricare i modelli (`COMFYUI_FREE_MEMORY`,
+  attivo di default). Senza, i modelli di ComfyUI restano in VRAM e in RAM, e il modello testuale
+  caricato subito dopo si riversa nella RAM di sistema fino a esaurirla. Con SDXL ricaricarli costa
+  pochi secondi.
 - ComfyUI riserva per default fino a circa 6,5 GB di RAM bloccata (*pinned memory*), che Windows non
   può spostare nel file di paging. Su una macchina da 16 GB conviene avviarlo con
   `--disable-pinned-memory`.
