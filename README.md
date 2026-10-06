@@ -59,30 +59,16 @@ Il perimetro completo, area per area, è in [`docs/mvp-scope.md`](docs/mvp-scope
 
 ## Stack e architettura
 
-SPA **Angular 21**; API **Laravel 12** su PHP 8.4; **PostgreSQL 16** e **Redis 7**; S3, SQS con
-DLQ, Step Functions, SSM e Secrets Manager emulati da **LocalStack** e descritti in **Terraform**;
-Traefik e Nginx come ingresso.
+SPA Angular 21; API Laravel 12 su PHP 8.4; PostgreSQL 16 e Redis 7; S3, SQS con DLQ, Step
+Functions, SSM e Secrets Manager emulati da LocalStack e descritti in Terraform; Traefik e Nginx
+come ingresso.
 
-```mermaid
-flowchart LR
-    user([Operatore]) --> traefik[Traefik]
-    traefik --> cdn[edge-cdn: SPA da S3]
-    cdn --> api[Nginx + Laravel API]
-    api --> db[(PostgreSQL, Redis)]
-    subgraph aws [AWS emulato da LocalStack]
-        s3[(S3 + KMS)]
-        sfn[Step Functions]
-        sqs[SQS + DLQ]
-    end
-    api --> s3
-    api --> sfn
-    sfn --> sqs
-    sqs --> workers[Worker documenti e comunicazioni]
-    workers -- task token e heartbeat --> sfn
-    workers --> ai[Bedrock e Textract]
-```
+![Vista container: ingresso, API, dati, orchestrazione e configurazione su LocalStack, worker, servizi AWS reali e provider del profilo local](docs/architecture/diagrams/container-view.svg)
 
-Gli elementi più interessanti:
+*Linea continua: chiamata sincrona; tratteggio: messaggio asincrono; grigio, nei riquadri
+tratteggiati: provider alternativi dei profili `standard` e `local`.*
+
+Scelte tecniche principali:
 
 - **Pipeline asincrona orchestrata.** Ogni passo è un task Step Functions consegnato su SQS con
   callback token. I worker reclamano il task in modo atomico, così una consegna duplicata non riesegue
@@ -130,12 +116,12 @@ Uno stack di osservabilità che gira insieme all'applicazione e si consulta da G
 `make setup`:
 
 - **OTel Collector** raccoglie le metriche di Laravel, dei worker e di Traefik; **Prometheus** le
-  conserva e valuta 16 regole di alert, ognuna con il link al proprio runbook; **Alertmanager** le
+  conserva e valuta le regole di alert, ognuna con il link al proprio runbook; **Alertmanager** le
   instrada.
 - **Loki** e **Grafana Alloy** centralizzano i log dei container dello stack, etichettati per progetto
   e servizio.
-- **Grafana** ha sei dashboard provisionate: golden signals delle API, pipeline documentale e delle
-  comunicazioni, qualità di AI e OCR, code e DLQ, log ed errori.
+- **Grafana** ha dashboard provisionate per i golden signals delle API, le pipeline documentale e
+  delle comunicazioni, la qualità di AI e OCR, code e DLQ, log ed errori.
 
 Le metriche di dominio sono un contratto: un catalogo dichiara nomi, label e valori ammessi, e i test
 falliscono se una dashboard legge una metrica inesistente o se una metrica non è osservata da

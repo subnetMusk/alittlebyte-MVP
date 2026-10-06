@@ -2,19 +2,20 @@
 
 Status: Accepted, implemented
 Date: 2026-06-24
+Supersedes: [ADR 0001](0001-frontend-spa.md)
 
 ## Context
 
 La MVP espone una SPA per operatori HR/CdL e mantiene Laravel come API JSON versionata. Il
 Capitolato cita una dashboard Angular e un pattern di distribuzione statico su S3 + CloudFront.
-La repository usa gia' Docker Compose, Terraform e LocalStack per modellare servizi AWS-like
+La repository usa già Docker Compose, Terraform e LocalStack per modellare servizi AWS-like
 locali.
 
 ## Decision
 
-Il frontend attivo e' una SPA Angular/TypeScript in `apps/frontend`, buildata con Angular CLI e
+Il frontend attivo è una SPA Angular/TypeScript in `apps/frontend`, buildata con Angular CLI e
 servita in produzione locale da Nginx. Orval genera un servizio Angular basato su HttpClient dal
-contratto OpenAPI, cosi' i componenti non istanziano HttpClient direttamente per le API di
+contratto OpenAPI, così i componenti non istanziano HttpClient direttamente per le API di
 dominio.
 
 La navigazione usa Angular Router per le tre viste top-level (`overview`, `assistant`,
@@ -38,9 +39,9 @@ S3 emulato in un container scaffolding solo-locale mantiene pulito l'artefatto d
 (2) **di forma**: riflette la topologia reale CDN → origin, dove l'edge è distinto dall'origin
 applicativo.
 
-![Frontend SPA e contratto API](../architecture/diagrams/03_frontend_spa_contratto_api.drawio.png)
+![Frontend SPA e contratto API](../archive/diagrams/03_frontend_spa_contratto_api.drawio.png)
 
-<sub>Sorgente editabile: [`03_frontend_spa_contratto_api.drawio`](../architecture/diagrams/03_frontend_spa_contratto_api.drawio), export [`SVG`](../architecture/diagrams/03_frontend_spa_contratto_api.drawio.svg).</sub>
+<sub>Sorgente editabile: [`03_frontend_spa_contratto_api.drawio`](../archive/diagrams/03_frontend_spa_contratto_api.drawio), export [`SVG`](../archive/diagrams/03_frontend_spa_contratto_api.drawio.svg).</sub>
 
 ## Consequences
 

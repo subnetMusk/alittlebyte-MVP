@@ -1,0 +1,114 @@
+# Ciclo di vita di un messaggio di task nelle code SQS (documenti e comunicazioni).
+# Sorgente di sqs-message-lifecycle.svg.
+# Titolo nella caption Markdown.
+# Render: d2 --omit-version --elk-nodeNodeBetweenLayers=30 --elk-edgeNodeBetweenLayers=15 docs/architecture/diagrams/sqs-message-lifecycle.d2 docs/architecture/diagrams/sqs-message-lifecycle.svg
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+
+direction: right
+
+classes: {
+  person: {
+    shape: person
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+    }
+  }
+  internal: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+      border-radius: 4
+    }
+  }
+  state: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+      border-radius: 16
+    }
+  }
+  final: {
+    style: {
+      fill: "#F1F5F9"
+      stroke: "#334155"
+      stroke-width: 2
+      border-radius: 16
+      double-border: true
+    }
+  }
+  icon: {
+    shape: image
+    width: 72
+    height: 72
+  }
+  boundary: {
+    label.near: top-left
+    style: {
+      fill: "#F8FAFC"
+      stroke: "#64748B"
+      stroke-width: 1
+      border-radius: 6
+      font-color: "#334155"
+      font-size: 16
+    }
+  }
+  optional-boundary: {
+    # Label in basso: le frecce entrano dall'alto.
+    label.near: bottom-left
+    style: {
+      fill: "#F1F5F9"
+      stroke: "#64748B"
+      stroke-width: 1
+      stroke-dash: 4
+      border-radius: 6
+      font-color: "#334155"
+      font-size: 16
+    }
+  }
+  sync: {
+    style: {
+      stroke: "#334155"
+      font-color: "#334155"
+    }
+  }
+  async: {
+    style: {
+      stroke: "#334155"
+      stroke-dash: 5
+      font-color: "#334155"
+    }
+  }
+  optional: {
+    style: {
+      stroke: "#64748B"
+      font-color: "#64748B"
+    }
+  }
+}
+
+sfn: "Step Functions" {
+  class: icon
+  icon: icons/aws/step-functions.svg
+}
+
+coda: "In coda\n[visibile]" {class: state}
+elaborazione: "In elaborazione\n[invisibile per 900 s]" {class: state}
+cancellato: "Cancellato" {class: final}
+dlq: "In DLQ\n[conservato 4 giorni]" {class: final}
+
+sfn -> coda: "task + callback token" {class: async}
+coda -> elaborazione: "ricevuto dal worker" {class: sync}
+elaborazione -> cancellato: "callback accettato\no errore permanente" {class: sync}
+elaborazione -> coda: "errore transitorio o worker fermo:\ndi nuovo visibile dopo 900 s" {class: sync}
+coda -> dlq: "dopo 3 ricezioni\nsenza cancellazione" {class: async}

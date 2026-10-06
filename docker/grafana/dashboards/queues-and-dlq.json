@@ -337,7 +337,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Task con un claim attivo. Un valore che non scende indica worker morti con claim non rilasciati: il runner li recupera dopo MVP_WORKFLOW_RUNNING_CLAIM_TTL_SECONDS."
+      "description": "Task con un claim attivo. Un valore che non scende indica worker morti con claim non rilasciati: il runner li recupera dopo MVP_WORKFLOW_CLAIM_TTL_SECONDS."
     },
     {
       "type": "stat",

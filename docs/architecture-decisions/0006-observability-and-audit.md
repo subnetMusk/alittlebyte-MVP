@@ -1,6 +1,6 @@
 # ADR 0006: Osservabilità e audit trail
 
-Status: Accepted, implementata per metriche, audit e log; la parte sulle trace è superata (vedi Aggiornamento)
+Status: Accepted, implemented for metrics, audit and logs; the tracing part is superseded (see "Aggiornamento")
 Date: 2026-06-08
 
 ## Context

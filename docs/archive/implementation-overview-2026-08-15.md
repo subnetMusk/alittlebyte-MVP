@@ -483,9 +483,9 @@ Gli stati applicativi sono enum PHP con cast Eloquent (`ProcessingStatus`, `Send
 
 **Punti da rafforzare in ottica production**: multi-tenancy garantita solo da `where tenant_id` applicativi (nessun Postgres Row-Level Security); nessuna strategia di migrazione dati/rollback documentata; niente backup/PITR (accettabile in MVP, bloccante in produzione); `ocr_text` longText cresce senza retention.
 
-![Dati, storage e protezione](../architecture/diagrams/05_dati_storage_protezione.drawio.png)
+![Dati, storage e protezione](diagrams/05_dati_storage_protezione.drawio.png)
 
-<sub>Sorgente editabile: [`05_dati_storage_protezione.drawio`](../architecture/diagrams/05_dati_storage_protezione.drawio), export [`SVG`](../architecture/diagrams/05_dati_storage_protezione.drawio.svg).</sub>
+<sub>Sorgente editabile: [`05_dati_storage_protezione.drawio`](diagrams/05_dati_storage_protezione.drawio), export [`SVG`](diagrams/05_dati_storage_protezione.drawio.svg).</sub>
 
 ---
 

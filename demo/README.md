@@ -9,10 +9,10 @@ ma inventati (con il carattere di controllo calcolato, altrimenti il caso d'uso
 li scarterebbe) e le email usano domini sotto `.test`, che l'RFC 2606 riserva
 proprio a questo scopo.
 
-## Come sono divisi
+## Struttura della cartella
 
 ```
-pdf/dataset/     20 documenti → finiscono nel set di dati e nello snapshot
+pdf/dataset/     20 documenti → destinati al set di dati e allo snapshot (vedi Stato)
 pdf/live/         5 documenti → mai caricati, si usano davanti al pubblico
 prompts/dataset/ 20 prompt    → generati in anticipo, già in cronologia
 prompts/live/     5 prompt    → da dare all'Assistant durante la demo
@@ -22,7 +22,7 @@ tools/                          generatori e degradatore
 La separazione fra `dataset` e `live` serve a non mostrare dal vivo dati che il
 pubblico ha già visto nel cruscotto.
 
-## Come si legge il nome di un file
+## Convenzione dei nomi
 
 ```
 NN-tipo-Ndest-esito-motivo.pdf
@@ -31,7 +31,7 @@ NN-tipo-Ndest-esito-motivo.pdf
 Leggendo il nome si sa cosa aspettarsi dal modello: quanti sotto-documenti
 dovrebbero nascere dallo split, come dovrebbe finire la revisione, e perché.
 
-## I venti documenti del set
+## Documenti del set
 
 | File | Destinatari | Esito atteso | Perché |
 |---|---|---|---|
@@ -66,22 +66,24 @@ E i cinque tenuti per la demo dal vivo:
 | live-04-assunzione-1dest-auto-completo | 1 | validato |
 | live-05-cedolino-1dest-revisione-scansione-pessima | 1 | revisione |
 
-## Le tre leve degli esiti
+## Fattori che determinano l'esito
 
 Il punteggio di confidenza è quello del campo chiave più debole, e ogni campo
-prende la confidenza della riga OCR da cui proviene (ADR 0013). Da lì le leve:
+prende la confidenza della riga OCR da cui proviene
+([ADR 0013](../docs/architecture-decisions/0013-per-field-ocr-confidence.md)). Tre fattori
+determinano l'esito:
 
-1. **Campo chiave assente** — niente intestazione aziendale (`senzaAzienda`) o
+1. **Campo chiave assente**: niente intestazione aziendale (`senzaAzienda`) o
    solo il nome di battesimo (`senzaCognome`): il punteggio va a zero.
-2. **Scansione degradata** — l'unica leva che manda in revisione un documento
+2. **Scansione degradata**: l'unico fattore che manda in revisione un documento
    *completo*, perché deve portare l'OCR sotto la soglia di 80.
-3. **Data col solo mese** (`dataSoloMese`) — lo schema di validazione accetta
+3. **Data col solo mese** (`dataSoloMese`): lo schema di validazione accetta
    solo date complete (`^\d{4}-\d{2}-\d{2}$`), quindi il modello restituisce una
    data parziale e il sotto-documento finisce in **quarantena**. Non è
    deterministico: dipende da come il modello formatta quella data volta per
    volta.
 
-## Livelli di degrado, misurati
+## Livelli di degrado
 
 `tools/degrada.py` rasterizza il PDF e ne rovina l'immagine. La confidenza
 dichiarata da Textract non scende in proporzione: fra "lieve" e "media" quasi
@@ -122,12 +124,13 @@ Poi va riapplicato il degrado ai sei documenti che lo prevedono nel nome:
 | 20-premio-1dest-revisione-scansione-media | sensibile |
 | live-05-cedolino-1dest-revisione-scansione-pessima | forte |
 
+Lo script gira sull'host e richiede Python con Pillow e `pdftoppm` (Poppler):
+
 ```bash
-python demo/tools/degrada.py ingresso.pdf uscita.pdf --intensita forte
+python demo/tools/degrada.py <ingresso>.pdf <uscita>.pdf --intensita forte
 ```
 
-Prima di caricare conviene verificare che FPDI apra tutto, perché il parser
-libero non regge i PDF con cross-reference compressi e fallirebbe a metà del
+Prima di caricare, verifica che FPDI apra tutti i PDF: il parser libero non regge i PDF con cross-reference compressi e fallirebbe a metà del
 popolamento:
 
 ```bash
@@ -137,6 +140,6 @@ docker compose run --rm --no-deps -v "$PWD/demo:/var/www/html/demo" \
 
 ## Stato
 
-Documenti e prompt sono pronti. Il popolamento dell'applicativo, le tre
+Al 2026-10-06 documenti e prompt sono pronti. Il popolamento dell'applicativo, le tre
 quarantene e i comandi `make apply-demo` / `reset-demo` / `snapshot-demo` sono
 ancora da fare.

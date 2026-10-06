@@ -44,8 +44,7 @@ con `inject()`, crea il ViewModel e nel template legge solo `vm.*`.
 L'avanzamento delle pipeline arriva via Server-Sent Events. `core/http/sse-client.ts` usa `fetch()`
 invece di `EventSource` per due ragioni:
 
-1. invia gli header di richiesta e correlazione, e con l'identità `trusted_headers` gli header
-   `X-Mvp-*` ([ADR 0007](../architecture-decisions/0007-authn-authz-boundary.md)), che `EventSource`
+1. invia gli header di richiesta e di correlazione (request ID e correlation ID), che `EventSource`
    non può inviare;
 2. distingue l'evento `error` inviato dal backend (`onNamedError`) dalla caduta della connessione
    (`onConnectionError`): un problema di rete non appare come fallimento della pipeline.
@@ -60,17 +59,17 @@ Il parsing dei frame è manuale (`consumeSseBuffer`), e un payload non JSON dive
 
 | Ambito | Scelta |
 | --- | --- |
-| Colore | Paletta invariata, più la coppia `--mvp-danger-soft` (`#fff0f0` / `#3b2222`) che mancava |
-| Tipografia | **IBM Plex Sans** ospitato nel progetto. **IBM Plex Mono** solo dove il numero è il contenuto (il valore della scheda metrica), mai per cifre dentro il testo |
+| Colore | Paletta del progetto, con la coppia `--mvp-danger-soft` (`#fff0f0` / `#3b2222`) |
+| Tipografia | IBM Plex Sans ospitato nel progetto. IBM Plex Mono solo dove il numero è il contenuto (il valore della scheda metrica), mai per cifre dentro il testo |
 | Cifre in tabella | Plex Sans con `font-variant-numeric: tabular-nums`: l'incolonnamento lo dà `tnum`, non il cambio di famiglia |
 | Separazione dei blocchi | Bordo e ombra |
-| Densità | Compatta dove si scorre (tabelle, elenchi), comoda dove si scrive (form, ispettore). Container query solo per i tre componenti che vivono in più contesti: scheda metrica, badge di stato, avanzamento a tappe |
-| Focus | Anello `3px solid` **`#098faa`**, `outline-offset: 2px`, uguale nei due temi |
+| Densità | Compatta dove si scorre (tabelle, elenchi), comoda dove si scrive (form, ispettore) |
+| Focus | Anello `3px solid` `#098faa`, `outline-offset: 2px`, uguale nei due temi |
 | Etichette | **A** (sopratitolo, etichetta di indicatore): maiuscolo, peso 700, `letter-spacing: .07em`. **B** (etichetta di campo): minuscolo, peso 600 |
 
 Il colore del focus viene da una misura. Con `outline-offset ≥ 2px` l'anello non tocca il
 riempimento del controllo, quindi confina solo con le superfici della paletta. Esiste una finestra
-di luminanza, **0,193–0,300**, in cui un colore unico supera il contrasto 3:1 di
+di luminanza, da 0,193 a 0,300, in cui un colore unico supera il contrasto 3:1 di
 [SC 2.4.13](https://www.w3.org/WAI/WCAG22/Understanding/focus-appearance.html) su tutte le superfici
 dei due temi. `#098faa` misura da 3,40 a 4,74. `outline-offset ≥ 2px` è quindi un vincolo di
 sistema: a offset zero la misura non vale più.

@@ -1,0 +1,173 @@
+# Vista di osservabilità: da dove arrivano metriche e log e dove finiscono.
+# Le frecce seguono i dati; pull o push sono indicati nella label.
+# Sorgente di observability-view.svg.
+# Titolo e legenda (blu: metriche, arancione: log) stanno nella caption Markdown.
+# Render: d2 --omit-version --elk-nodeNodeBetweenLayers=30 --elk-edgeNodeBetweenLayers=15 docs/architecture/diagrams/observability-view.d2 docs/architecture/diagrams/observability-view.svg
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+
+direction: right
+
+classes: {
+  person: {
+    shape: person
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+    }
+  }
+  internal: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+      border-radius: 4
+    }
+  }
+  icon: {
+    shape: image
+    width: 72
+    height: 72
+  }
+  # Nodo-icona terminale in un layout orizzontale: label a destra, dove non arrivano frecce.
+  icon-leaf: {
+    shape: image
+    width: 72
+    height: 72
+    label.near: outside-right-center
+  }
+  boundary: {
+    label.near: top-left
+    style: {
+      fill: "#F8FAFC"
+      stroke: "#64748B"
+      stroke-width: 1
+      border-radius: 6
+      font-color: "#334155"
+      font-size: 16
+    }
+  }
+  optional-boundary: {
+    # Label in basso: le frecce entrano dall'alto.
+    label.near: bottom-left
+    style: {
+      fill: "#F1F5F9"
+      stroke: "#64748B"
+      stroke-width: 1
+      stroke-dash: 4
+      border-radius: 6
+      font-color: "#334155"
+      font-size: 16
+    }
+  }
+  sync: {
+    style: {
+      stroke: "#334155"
+      font-color: "#334155"
+    }
+  }
+  async: {
+    style: {
+      stroke: "#334155"
+      stroke-dash: 5
+      font-color: "#334155"
+    }
+  }
+  optional: {
+    style: {
+      stroke: "#64748B"
+      font-color: "#64748B"
+    }
+  }
+  store: {
+    shape: cylinder
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#334155"
+      stroke-width: 2
+    }
+  }
+  external: {
+    style: {
+      fill: "#F1F5F9"
+      stroke: "#64748B"
+      stroke-width: 2
+      stroke-dash: 4
+      border-radius: 4
+    }
+  }
+  metrics: {
+    style: {
+      stroke: "#1D4ED8"
+      stroke-width: 2
+      font-color: "#1D4ED8"
+    }
+  }
+  logs: {
+    style: {
+      stroke: "#B45309"
+      stroke-width: 2
+      font-color: "#B45309"
+    }
+  }
+}
+
+app: "Applicazione" {
+  class: boundary
+
+  laravel: "API e worker\n[Laravel]" {class: internal}
+  file: "Metriche applicative\n[file JSON, volume condiviso]" {class: store}
+  endpoint: "/internal/metrics\n[Nginx :8081]" {class: internal}
+}
+
+traefik: "Traefik" {
+  class: icon
+  icon: icons/devicon/traefikproxy.svg
+}
+
+containers: "Container etichettati\n[stdout via socket Docker]" {class: internal}
+
+stack: "Stack di osservabilità" {
+  class: boundary
+  # Label in basso a destra: le frecce entrano dall'alto ed escono in basso a sinistra.
+  label.near: bottom-right
+
+  otel: "OTel Collector" {
+    class: icon
+    icon: icons/devicon/opentelemetry.svg
+  }
+  prometheus: "Prometheus" {
+    class: icon
+    icon: icons/devicon/prometheus.svg
+  }
+  alertmanager: "Alertmanager" {class: internal}
+  alloy: "Agente dei log\n[Grafana Alloy]" {class: internal}
+  loki: "Log\n[Loki, 7 giorni]" {class: internal}
+  grafana: "Dashboard\n[Grafana]" {
+    class: icon-leaf
+    icon: icons/devicon/grafana.svg
+  }
+}
+
+receiver: "Receiver dimostrativo" {class: external}
+
+app.laravel -> app.file: "scrittura con lock" {class: metrics}
+app.file -> app.endpoint: "lettura allo scrape" {class: metrics}
+app.endpoint -> stack.otel: "metriche (scrape)" {class: metrics}
+traefik -> stack.otel: "metriche (scrape)" {class: metrics}
+stack.otel -> stack.prometheus: "metriche (scrape)" {class: metrics}
+stack.prometheus -> stack.grafana: "PromQL" {class: metrics}
+stack.prometheus -> stack.alertmanager: "alert" {class: sync}
+stack.alertmanager -> receiver: "notifiche" {class: sync}
+
+containers -> stack.alloy: "log" {class: logs}
+stack.alloy -> stack.loki: "log (push)" {class: logs}
+stack.loki -> stack.grafana: "LogQL" {class: logs}
+

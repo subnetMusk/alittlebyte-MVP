@@ -44,6 +44,11 @@ label `service` e `project`.
 
 ## Flusso delle metriche
 
+![Flussi di metriche e log: applicazione, Traefik e container verso Collector, Prometheus, Alertmanager, Alloy, Loki e Grafana](../architecture/diagrams/observability-view.svg)
+
+*Le frecce seguono i dati. Blu: metriche; arancione: log. Nessun componente produce trace.*
+
+
 1. Laravel espone `/internal/metrics` su un listener Nginx dedicato, `:8081`, distinto da quello
    raggiunto da Traefik (`:8080`). Da fuori, `https://localhost:8443/internal/metrics` risponde 404.
 2. `app`, `queue` e `queue-communications` condividono il volume `observability-metrics`: le metriche
@@ -112,9 +117,9 @@ curl -sk --resolve grafana.localhost:8443:127.0.0.1 -u admin:admin https://grafa
 
 ## Contratto delle metriche
 
-Le metriche di dominio sono **dichiarate** in `app/Mvp/Observability/DomainMetricCatalog.php`, non
-dedotte da ciò che il file di accumulo contiene. Il catalogo definisce nome, tipo, help, label e —
-dove i valori sono un insieme chiuso — i valori ammessi, presi dagli enum di dominio.
+Le metriche di dominio sono dichiarate in `app/Mvp/Observability/DomainMetricCatalog.php`, non
+dedotte da ciò che il file di accumulo contiene. Il catalogo definisce nome, tipo, help e label e,
+quando i valori sono un insieme chiuso, i valori ammessi, presi dagli enum di dominio.
 
 I nomi delle state machine fanno eccezione: non sono un enum ma portano il `name_prefix`
 dell'ambiente, quindi il catalogo li legge dalla configurazione con `StateMachineName::forPipeline()`,
@@ -123,28 +128,27 @@ resta fuori dalle serie seminate: `unknown` descriverebbe una pipeline che non p
 
 Tre conseguenze operative:
 
-- una metrica dichiarata compare nell'esposizione **anche a zero**, prima di essere emessa la prima
-  volta. I pannelli mostrano `0` invece di "No data" e le regole con `== 0` hanno una serie su cui
-  valutare (è la ragione per cui `QueueBacklogHigh` prima non poteva scattare);
+- una metrica dichiarata compare nell'esposizione anche a zero, prima di essere emessa la prima
+  volta. I pannelli mostrano `0` invece di "No data" e le regole con `== 0`, come
+  `QueueBacklogHigh`, hanno una serie su cui valutare;
 - una metrica ritirata dal codice smette davvero di essere esposta, anche se la sua chiave resta nel
   volume condiviso `observability-metrics`;
 - `MetricsRecorder` rifiuta in `local`/`testing` una metrica non a catalogo o con label diverse da
   quelle dichiarate; in esercizio degrada a warning e registra comunque, perché un problema di
   strumentazione non deve abbattere il percorso di business.
 
-`tests/Feature/ObservabilityContractTest.php` confronta il catalogo con il PromQL di **tutte** le
+`tests/Feature/ObservabilityContractTest.php` confronta il catalogo con il PromQL di tutte le
 dashboard e le rule: nome inesistente, label non dichiarata, valore fuori enum e metrica che nessuno
 guarda fanno fallire la suite. È l'unico controllo che copre il PromQL dentro i JSON delle
-dashboard — `promtool check config` valida solo la sintassi delle regole.
+dashboard: `promtool check config` valida solo la sintassi delle regole.
 
-### Convenzioni di naming, e perché contano qui
+### Convenzioni dei nomi
 
-I counter terminano in `_total`; i gauge no. Non è formalismo: il `prometheusexporter` del Collector
-appende `_total` ai sum monotoni che non ce l'hanno, quindi un counter chiamato `..._sum` esce come
-`..._sum_total` e ogni query sul nome originale smette di trovarlo. È esattamente ciò che ha reso
-vuoti i pannelli di confidenza e durata OCR pur essendoci il dato. Due difese:
+I counter terminano in `_total`; i gauge no. Il `prometheusexporter` del Collector appende `_total` ai sum monotoni che non ce l'hanno, quindi un counter chiamato `..._sum` esce come
+`..._sum_total` e ogni query sul nome originale smette di trovarlo: i pannelli restano vuoti anche
+quando il dato c'è. Due difese:
 
-- `add_metric_suffixes: false` in `docker/otel-collector/config.yml` — il Collector qui è un gateway
+- `add_metric_suffixes: false` in `docker/otel-collector/config.yml`: il Collector qui è un gateway
   di trasporto, non un normalizzatore di nomi;
 - le due misure OCR sono dichiarate come famiglie `summary` (`mvp_textract_confidence`,
   `mvp_textract_duration_seconds`), così `_sum` e `_count` appartengono formalmente alla stessa
@@ -177,7 +181,7 @@ Due letture utili in incidente:
 - `pending` che cresce senza scendere → i worker non stanno consumando (controllare `queue` e
   `queue-communications`, e l'alert `QueueBacklogHigh`);
 - `running` che non torna a zero → worker terminati senza rilasciare il claim. Il runner li recupera
-  da solo dopo `MVP_WORKFLOW_RUNNING_CLAIM_TTL_SECONDS`, quindi il valore va letto su una finestra
+  da solo dopo `MVP_WORKFLOW_CLAIM_TTL_SECONDS`, quindi il valore va letto su una finestra
   più lunga di quel TTL prima di concludere che c'è un problema.
 
 ### Label attese in Prometheus
@@ -211,7 +215,7 @@ Se un collector di gauge fallisce (per esempio una colonna mancante dopo una mig
 la sua famiglia sparisce ma il resto dell'esposizione continua a essere servito, e
 `mvp_metrics_collection_failures_total{collector}` dice quale ha ceduto.
 
-## Dashboards
+## Dashboard
 
 Le dashboard sono JSON in `docker/grafana/dashboards`.
 
@@ -220,29 +224,27 @@ correlati, e ogni pannello porta una `description` visibile sull'icona informati
 raccomandazioni con cui si apre la guida Grafana, ed è anche il criterio per decidere se un pannello
 nuovo appartiene o no a quella pagina.
 
-- `api-golden-signals.json` — *triage in testa*. Prima fascia: stato del servizio, alert in firing,
-  errori nell'ultima ora, per capire in due secondi se c'è un problema **adesso**. Seconda: i quattro
+- `api-golden-signals.json`: *triage in testa*. Prima fascia: stato del servizio, alert in firing,
+  errori nell'ultima ora, per capire subito se c'è un problema in corso. Seconda: i quattro
   segnali d'oro con i rispettivi andamenti. Terza: tabella per route e saturazione (connessioni edge,
   backlog pipeline, memoria del Collector).
-- `document-pipeline.json` — *imbuto*. Il pannello portante mostra la dispersione fra i passi
-  (rilevati → con esito → validati → scaricati): dice **dove** la pipeline perde documenti, che prima
-  andava ricostruito confrontando due tabelle. Seguono stato corrente, throughput per task e cause
+- `document-pipeline.json`: *imbuto*. Il pannello portante mostra la dispersione fra i passi
+  (rilevati → con esito → validati → scaricati): dice dove la pipeline perde documenti. Seguono stato corrente, throughput per task e cause
   dei fallimenti.
-- `communication-pipeline.json` — *stessa struttura della pipeline documenti*, deliberatamente: due
+- `communication-pipeline.json`: *stessa struttura della pipeline documenti*, deliberatamente: due
   pipeline con la stessa forma si leggono con la stessa abitudine. L'imbuto va da richieste ad
   approvate; il passo della copertina può restare indietro senza che sia un guasto.
-- `queues-and-dlq.json` — *metodo USE*, che descrive lo stato di una risorsa: **Utilization** (lavoro
-  che scorre), **Saturation** (DLQ, task in attesa, bloccati oltre timeout), **Errors** (messaggi
+- `queues-and-dlq.json`: *metodo USE*, che descrive lo stato di una risorsa: Utilization (lavoro
+  che scorre), Saturation (DLQ, task in attesa, bloccati oltre timeout), Errors (messaggi
   falliti, heartbeat, callback rifiutati). È il complemento del metodo RED usato per l'API.
-- `ai-ocr-quality.json` — qualità di Textract (confidenza e durata sulla finestra selezionata,
+- `ai-ocr-quality.json`: qualità di Textract (confidenza e durata sulla finestra selezionata,
   esiti, fallimenti per codice) ed esito dell'estrazione AI. La sezione "OCR locale" copre il
   profilo di esecuzione locale ([ADR 0014](../architecture-decisions/0014-local-execution-profile.md)):
   pagine lette per metodo (`text_layer` o `tesseract`), durata media e fallimenti
-  (`mvp_local_ocr_*`). Lo stato delle comunicazioni è stato
-  spostato nella dashboard delle comunicazioni, a cui appartiene.
-- `logs-and-errors.json` — *triage temporale senza perdere il dettaglio*. Prima fascia: errori negli
+  (`mvp_local_ocr_*`). Lo stato delle comunicazioni è nella dashboard delle comunicazioni.
+- `logs-and-errors.json`: *triage temporale senza perdere il dettaglio*. Prima fascia: errori negli
   ultimi 5 minuti (finestra fissa) accanto al totale del periodo selezionato, servizio più rumoroso e
-  alert attivi — durante un incidente serve distinguere un picco in corso da uno già rientrato.
+  alert attivi: durante un incidente serve distinguere un picco in corso da uno già rientrato.
   Seguono il confronto fra servizi a piena larghezza, le righe complete e un pannello per ciascuno dei
   tre servizi. Apre su `now-1h`, più corta delle altre perché è la scala giusta per i log.
 

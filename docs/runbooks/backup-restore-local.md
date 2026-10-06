@@ -1,6 +1,9 @@
-# Backup/Restore Locale PostgreSQL
+# Backup e restore locale di PostgreSQL
 
-Questa procedura e' dimostrativa per la MVP locale. Non e' PITR, non gestisce retention automatica e non sostituisce una strategia di backup production.
+Procedura dimostrativa per l'ambiente locale. Copre solo il database, senza point-in-time recovery
+né retention automatica, e non sostituisce una strategia di backup di produzione.
+
+Prerequisito: stack avviato, con il container `postgres` in esecuzione.
 
 ## Backup
 
@@ -8,24 +11,46 @@ Questa procedura e' dimostrativa per la MVP locale. Non e' PITR, non gestisce re
 make backup-local
 ```
 
-Il dump viene scritto in `backups/local/mvp-YYYYmmdd-HHMMSS.sql` usando `pg_dump --clean --if-exists` dentro il container `postgres`. La cartella `backups/` e' esclusa dal versionamento.
+Il target esegue `pg_dump --clean --if-exists` nel container `postgres` e scrive il dump in
+`backups/local/mvp-YYYYmmdd-HHMMSS.sql`. La cartella `backups/` non è versionata.
 
 ## Restore
+
+Ferma i worker, perché non scrivano durante il ripristino:
+
+```bash
+docker compose stop queue queue-communications
+```
+
+Applica il dump:
 
 ```bash
 make restore-local BACKUP=backups/local/mvp-YYYYmmdd-HHMMSS.sql
 ```
 
-Il restore applica il dump con `psql -v ON_ERROR_STOP=1` sul database locale configurato nel container. Il dump e' generato con `--clean --if-exists`, quindi droppa e ricrea gli oggetti da solo: si puo' ripristinare direttamente sopra un database gia' migrato, senza passaggi preliminari.
+Il target applica il dump con `psql -v ON_ERROR_STOP=1`. Il dump è generato con `--clean
+--if-exists`, quindi elimina e ricrea gli oggetti: si può ripristinare sopra un database già
+migrato, senza passaggi preliminari.
 
-## Oggetti Documentali
+Riavvia i worker:
 
-Il target copre solo PostgreSQL. I PDF originali e split vivono nello storage S3-compatible locale o reale in base a `MVP_DOCUMENT_DISK`; per una ricostruzione completa vanno preservati anche bucket/prefix documentali coerenti con i path salvati a database.
+```bash
+docker compose start queue queue-communications
+```
 
-## Verifica Manuale
+## File dei documenti
 
-1. Eseguire `make backup-local`.
-2. Annotare il file creato in `backups/local`.
-3. Sporcare o azzerare i dati (es. `make fresh`).
-4. Eseguire `make restore-local BACKUP=<file>`.
-5. Aprire la SPA e verificare `/api/v1/state`: i dati precedenti al reset devono essere tornati.
+Il target copre solo PostgreSQL. Originali, sotto-documenti, copertine ed export stanno nello
+storage S3, locale o reale secondo `MVP_DOCUMENT_DISK` e `MVP_COMMUNICATION_COVER_DISK`. Per una
+ricostruzione completa vanno conservati anche bucket e prefissi coerenti con i path salvati nel
+database.
+
+## Verifica
+
+1. Esegui `make backup-local` e annota il file creato in `backups/local/`.
+2. Modifica solo dati del database dalla SPA, per esempio correggendo un campo estratto o segnando
+   un documento come revisionato. Non usare `make fresh`: oltre al database cancella originali,
+   copertine ed export dallo storage, anche dal bucket reale con `real_s3`, e il restore non li
+   ripristina.
+3. Esegui `make restore-local BACKUP=<file>`.
+4. Verifica dalla SPA, o con `GET /api/v1/state`, che le modifiche del passo 2 siano annullate.
